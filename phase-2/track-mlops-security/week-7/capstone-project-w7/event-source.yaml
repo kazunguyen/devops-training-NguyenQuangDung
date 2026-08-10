@@ -1,0 +1,10 @@
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: dvc-webhook
+spec:
+  webhook:
+    dvc-push:
+      port: "12000"
+      endpoint: /dvc-push
+      method: POST

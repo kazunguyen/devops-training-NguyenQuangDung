@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: ml-pipeline-trigger
+spec:
+  template:
+    serviceAccountName: default
+  dependencies:
+    - name: dvc-push-dep
+      eventName: dvc-push
+      eventSourceName: dvc-webhook
+  triggers:
+    - template:
+        name: trigger-ml-pipeline
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: ml-pipeline-
+              spec:
+                entrypoint: ml-dag
