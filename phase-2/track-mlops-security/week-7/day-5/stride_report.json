@@ -1,0 +1,78 @@
+{
+  "model_name": "GCP Web Application Threat Model",
+  "elements_count": 5,
+  "flows_count": 4,
+  "threats_count": 10,
+  "stride_threats": [
+    {
+      "category": "Spoofing",
+      "target": "Client Browser",
+      "description": "Kẻ tấn công giả mạo danh tính Client Browser khi gửi request đến Cloud Load Balancing.",
+      "severity": "HIGH",
+      "mitigation": "Triển khai Identity-Aware Proxy (IAP) và mã hóa Token xác thực."
+    },
+    {
+      "category": "Tampering",
+      "target": "Flow: Cloud Load Balancing -> Compute Engine Web Server",
+      "description": "Dữ liệu Proxied Request truyền qua giao thức HTTP có thể bị chỉnh sửa trái phép.",
+      "severity": "CRITICAL",
+      "mitigation": "Ép buộc sử dụng HTTPS mã hóa SSL/TLS trên Cloud Load Balancing."
+    },
+    {
+      "category": "Repudiation",
+      "target": "Compute Engine Web Server",
+      "description": "Các thao tác thay đổi dữ liệu tại Compute Engine Web Server không được ghi nhận danh tính chi tiết.",
+      "severity": "MEDIUM",
+      "mitigation": "Kích hoạt Cloud Audit Logs và đẩy log về Cloud Logging."
+    },
+    {
+      "category": "Denial of Service",
+      "target": "Compute Engine Web Server",
+      "description": "Lượng lớn request có thể gây quá tải và làm ngưng trệ Compute Engine Web Server.",
+      "severity": "HIGH",
+      "mitigation": "Cấu hình Cloud Armor Rate Limiting và MIG Autoscaling."
+    },
+    {
+      "category": "Repudiation",
+      "target": "Secret Manager",
+      "description": "Các thao tác thay đổi dữ liệu tại Secret Manager không được ghi nhận danh tính chi tiết.",
+      "severity": "MEDIUM",
+      "mitigation": "Kích hoạt Cloud Audit Logs và đẩy log về Cloud Logging."
+    },
+    {
+      "category": "Information Disclosure",
+      "target": "Secret Manager",
+      "description": "Thông tin nhạy cảm DB Credentials Request tại Secret Manager nguy cơ bị rò rỉ ra ngoài.",
+      "severity": "HIGH",
+      "mitigation": "Lưu trữ mật khẩu trong Secret Manager và mã hóa dữ liệu Cloud SQL tại chỗ."
+    },
+    {
+      "category": "Elevation of Privilege",
+      "target": "Secret Manager",
+      "description": "Service Account sở hữu quyền quá rộng để thao tác với Secret Manager.",
+      "severity": "CRITICAL",
+      "mitigation": "Áp dụng nguyên tắc Least Privilege qua Cloud IAM Custom Roles."
+    },
+    {
+      "category": "Repudiation",
+      "target": "Cloud SQL PostgreSQL",
+      "description": "Các thao tác thay đổi dữ liệu tại Cloud SQL PostgreSQL không được ghi nhận danh tính chi tiết.",
+      "severity": "MEDIUM",
+      "mitigation": "Kích hoạt Cloud Audit Logs và đẩy log về Cloud Logging."
+    },
+    {
+      "category": "Information Disclosure",
+      "target": "Cloud SQL PostgreSQL",
+      "description": "Thông tin nhạy cảm SQL Query & Sensitive Data tại Cloud SQL PostgreSQL nguy cơ bị rò rỉ ra ngoài.",
+      "severity": "HIGH",
+      "mitigation": "Lưu trữ mật khẩu trong Secret Manager và mã hóa dữ liệu Cloud SQL tại chỗ."
+    },
+    {
+      "category": "Elevation of Privilege",
+      "target": "Cloud SQL PostgreSQL",
+      "description": "Service Account sở hữu quyền quá rộng để thao tác với Cloud SQL PostgreSQL.",
+      "severity": "CRITICAL",
+      "mitigation": "Áp dụng nguyên tắc Least Privilege qua Cloud IAM Custom Roles."
+    }
+  ]
+}

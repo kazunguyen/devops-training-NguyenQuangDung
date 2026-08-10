@@ -1,0 +1,13 @@
+digraph ThreatModel {
+  rankdir=LR;
+  node [shape=box, style=filled, fillcolor=white];
+  "client" [label="Client Browser\n(External Actor)", fillcolor=lightgrey];
+  "clb" [label="Cloud Load Balancing\n(Reverse Proxy)", fillcolor=lightblue];
+  "web" [label="Compute Engine Web Server\n(Server)", fillcolor=lightblue];
+  "db" [label="Cloud SQL PostgreSQL\n(Database)", fillcolor=lightblue];
+  "secret" [label="Secret Manager\n(Database)", fillcolor=lightblue];
+  "client" -> "clb" [label="HTTPS: HTTP Request & Auth Cookie"];
+  "clb" -> "web" [label="HTTP: Proxied Request"];
+  "web" -> "secret" [label="gRPC: DB Credentials Request"];
+  "web" -> "db" [label="PostgreSQL TCP: SQL Query & Sensitive Data"];
+}
