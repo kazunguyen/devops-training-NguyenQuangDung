@@ -1,0 +1,10 @@
+digraph G {
+    rankdir=LR;
+    node [shape=box, style=filled, color=lightblue];
+    Client -> CloudLoadBalancing [label="HTTPS / Spoofing & DoS"];
+    CloudLoadBalancing -> ComputeEngine [label="Internal / Tampering"];
+    ComputeEngine -> CloudSQL [label="TCP / Info Disclosure"];
+    
+    CloudLoadBalancing [color=lightgreen];
+    CloudSQL [color=lightyellow];
+}

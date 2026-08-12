@@ -37,8 +37,8 @@ kubectl create rolebinding default-admin \
 Triển khai Argo Events vào Namespace riêng để quản lý Event-driven trigger:
 ```bash
 kubectl create namespace argo-events
-kubectl apply -f https://github.com/argoproj/argo-events/releases/latest/download/install.yaml -n argo-events
-kubectl apply -f https://github.com/argoproj/argo-events/releases/latest/download/eventbus-native.yaml -n argo-events
+kubectl apply -n argo-events -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install.yaml
+kubectl apply -n argo-events -f https://raw.githubusercontent.com/argoproj/argo-events/stable/examples/eventbus/native.yaml
 ```
 
 Triển khai EventSource lắng nghe sự kiện push dữ liệu mới từ Webhook (mô phỏng DVC push):
@@ -85,11 +85,44 @@ spec:
               kind: Workflow
               metadata:
                 generateName: ml-pipeline-
+                namespace: argo
               spec:
                 entrypoint: ml-dag
+                templates:
+                - name: ml-dag
+                  dag:
+                    tasks:
+                    - name: data-prep
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Kéo dữ liệu từ DVC và tiền xử lý"}]
+                    - name: train-model
+                      dependencies: [data-prep]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Huấn luyện mô hình và ghi log metrics lên MLflow"}]
+                    - name: eval-model
+                      dependencies: [train-model]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Đánh giá mô hình đạt độ chính xác cao"}]
+                    - name: deploy-model
+                      dependencies: [eval-model]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Triển khai mô hình sang KServe Canary"}]
+                - name: echo-task
+                  inputs:
+                    parameters:
+                    - name: message
+                  container:
+                    image: alpine:latest
+                    command: [sh, -c]
+                    args: ["echo '{{inputs.parameters.message}}'; sleep 3"]
 ```
-Áp dụng cấu hình:
+Áp dụng cấu hình và cấp quyền cho Sensor khởi tạo Workflow:
 ```bash
+kubectl create rolebinding argo-events-creator --clusterrole=admin --serviceaccount=argo-events:default -n argo
 kubectl apply -f sensor.yaml -n argo-events
 ```
 
@@ -148,30 +181,33 @@ Theo dõi trạng thái thực thi và kết quả từng step qua Terminal:
 kubectl get workflows -n argo -w
 kubectl logs -n argo -l workflows.argoproj.io/workflow --prefix=true
 ```
-
+![image](./screenshots/ml-pipeline-run-success.png)
 Truy cập Argo UI để quan sát biểu đồ DAG trực quan:
 ```bash
 kubectl port-forward deployment/argo-server -n argo 2746:2746
 ```
-Mở trình duyệt tại `https://localhost:2746/workflows/argo`.
+Mở trình duyệt tại [https://localhost:2746/workflows/argo](https://localhost:2746/workflows/argo).
+![image](./screenshots/dag-workflow-diagram.png)
 
 **Bước 4: Kích hoạt Pipeline tự động qua Event**
 
-Mô phỏng sự kiện cập nhật dữ liệu mới để kiểm tra Argo Events trigger Pipeline:
+Mô phỏng sự kiện cập nhật dữ liệu mới để kiểm tra Argo Events tự động trigger Pipeline:
 ```bash
-# Ghi nhận thay đổi dataset mới vào DVC và push lên remote
-dvc add data/raw/new_batch.csv
-dvc push
-git add data/raw/new_batch.csv.dvc
-git commit -m "feat: add new training batch"
-git push
+# Mở Port-forward cho Webhook EventSource ra Localhost (chạy ở Terminal riêng)
+kubectl port-forward service/dvc-webhook-eventsource-svc -n argo-events 12000:12000 &
+
+# Gửi request giả lập sự kiện có thay đổi dữ liệu từ DVC
+curl -d '{"message":"DVC data updated"}' \
+  -H "Content-Type: application/json" \
+  -X POST http://localhost:12000/dvc-push
 ```
 
 Xác nhận Sensor đã nhận Event và Pipeline mới được khởi tạo tự động:
 ```bash
 kubectl get workflows -n argo
-kubectl describe sensor dvc-trigger -n argo-events
+kubectl get sensor -n argo-events
 ```
+![image](./screenshots/get-workflows-sensor.png)
 
 **Bước 5: Thiết lập Cloud Security trên Google Cloud**
 
@@ -182,8 +218,18 @@ gcloud config set project <PROJECT_ID>
 
 Kích hoạt Security Command Center (SCC) để giám sát rủi ro trên toàn bộ tài nguyên:
 ```bash
+# Lấy ORG_ID
+gcloud organizations list
+
+# Cấp quyền Security Center Admin cho tài khoản hiện tại (thay <EMAIL> bằng email thật)
+gcloud organizations add-iam-policy-binding <ORG_ID> \
+  --member="user:<EMAIL>" \
+  --role="roles/securitycenter.admin"
+
 gcloud services enable securitycenter.googleapis.com
-gcloud scc settings update --organization=<ORG_ID> --enable-asset-discovery
+gcloud scc manage services update sha \
+  --organization=organizations/<ORG_ID> \
+  --enablement-state="ENABLED"
 ```
 
 Kiểm tra danh sách Finding bảo mật do SCC phát hiện:
@@ -200,8 +246,8 @@ gcloud scc findings list organizations/<ORG_ID> \
   --filter="state=\"ACTIVE\"" \
   --format="json" \
   --limit=5 > findings.json
-cat findings.json
 ```
+Kết quả xuất ra file [findings.json](./findings.json)
 
 Tiến hành kiểm tra phân quyền IAM để phát hiện tài khoản có quyền hạn không hợp lệ:
 ```bash
@@ -212,14 +258,14 @@ gcloud projects get-iam-policy <PROJECT_ID> \
 
 **Bước 7: Lập Threat Model STRIDE cho kiến trúc tích hợp**
 
-Thực thi script `threat_model.py` để tự động hóa phân tích rủi ro STRIDE trên kiến trúc end-to-end (Client → Cloud Load Balancing → Compute Engine Web Server → Cloud SQL):
+Thực thi script [`threat_model.py`](./threat_model.py) để tự động hóa phân tích rủi ro STRIDE trên kiến trúc end-to-end (Client → Cloud Load Balancing → Compute Engine Web Server → Cloud SQL):
 ```bash
 python threat_model.py
 ```
 
 Kết quả xuất ra 2 file:
-- `stride_report.json`: Báo cáo phân loại chi tiết 6 hạng mục rủi ro STRIDE.
-- `architecture.dot`: Sơ đồ Data Flow dạng Graphviz.
+- [`stride_report.json`](./stride_report.json): Báo cáo phân loại chi tiết 6 hạng mục rủi ro STRIDE.
+- [`architecture.dot`](./architecture.dot): Sơ đồ Data Flow dạng Graphviz.
 
 Kiểm tra nội dung báo cáo JSON:
 ```bash
