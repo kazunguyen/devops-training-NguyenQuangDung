@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ml-pipeline-
+  namespace: argo
+spec:
+  entrypoint: ml-dag
+  templates:
+  - name: ml-dag
+    dag:
+      tasks:
+      - name: data-prep
+        template: echo-task
+        arguments:
+          parameters: [{name: message, value: "Data preparation completed"}]
+      - name: train-model
+        dependencies: [data-prep]
+        template: echo-task
+        arguments:
+          parameters: [{name: message, value: "Model training finished"}]
+      - name: eval-model
+        dependencies: [train-model]
+        template: echo-task
+        arguments:
+          parameters: [{name: message, value: "Model evaluation passed with 95% accuracy"}]
+      - name: deploy-model
+        dependencies: [eval-model]
+        template: echo-task
+        arguments:
+          parameters: [{name: message, value: "Model successfully deployed to production"}]
+
+  - name: echo-task
+    inputs:
+      parameters:
+      - name: message
+    container:
+      image: alpine:latest
+      command: [sh, -c]
+      args: ["echo '{{inputs.parameters.message}}'; sleep 5"]

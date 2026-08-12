@@ -1,0 +1,19 @@
+[
+  {
+    "SchemaVersion": "2018-10-08",
+    "Id": "fake-finding-id-12345",
+    "ProductArn": "arn:aws:securityhub:us-east-1:123456789012:product/123456789012/default",
+    "GeneratorId": "aws-foundational-security-best-practices",
+    "AwsAccountId": "123456789012",
+    "Types": ["Software and Configuration Checks/Vulnerabilities/CVE"],
+    "CreatedAt": "2026-08-08T00:00:00Z",
+    "UpdatedAt": "2026-08-08T00:00:00Z",
+    "Severity": {"Label": "CRITICAL"},
+    "Title": "S3 Bucket is Public (Simulated)",
+    "Description": "Simulated finding for internship report: S3 bucket has public read access.",
+    "Resources": [{
+      "Type": "AwsS3Bucket",
+      "Id": "arn:aws:s3:::my-public-bucket"
+    }]
+  }
+]

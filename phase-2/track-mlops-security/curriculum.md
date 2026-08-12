@@ -82,19 +82,25 @@ Tài liệu này định hướng lộ trình chuyên sâu cho **Track C (MLOps 
 
 ### Day 2: MLOps - Event Trigger
 *Kích hoạt Pipeline tự động.*
+- **Argo Events**: [Documentation](https://argoproj.github.io/argo-events/)
 - Cấu hình Event để kích hoạt Argo Workflows khi có thay đổi từ DVC pipeline.
 
 ### Day 3: Security - Cloud Security (AWS)
 *Theo dõi và phát hiện các rủi ro bảo mật trên Cloud.*
-- Bật và cấu hình **GuardDuty**, **SecurityHub**, **IAM Access Analyzer** trên một AWS account.
+- **Amazon GuardDuty**: [Documentation](https://docs.aws.amazon.com/guardduty/)
+- **AWS Security Hub**: [Documentation](https://docs.aws.amazon.com/securityhub/)
+- **IAM Access Analyzer**: [Documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/what-is-access-analyzer.html)
+- Bật và cấu hình các dịch vụ trên để giám sát rủi ro bảo mật trên một AWS account.
 
 ### Day 4: Security - Triage Findings
 *Xử lý sự cố bảo mật.*
+- **AWS Finding Format (ASFF)**: [Documentation](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-findings-format.html)
 - Phân tích và triage (phân loại) 5 finding mẫu từ SecurityHub/GuardDuty.
 - Viết action plan để xử lý các finding này.
 
 ### Day 5: Security - Threat Modeling
 *Nhận diện rủi ro qua mô hình STRIDE.*
+- **OWASP Threat Modeling**: [Documentation](https://owasp.org/www-community/Threat_Modeling)
 - Phân tích và tạo Threat Model cho 1 hệ thống web app theo chuẩn STRIDE.
 
 ---
@@ -112,5 +118,5 @@ Tài liệu này định hướng lộ trình chuyên sâu cho **Track C (MLOps 
 - **Pre-commit**: Cài đặt gitleaks và secret scan.
 - **CI**: Semgrep (SAST), Snyk/Grype (SCA), Trivy, Syft (SBOM), Cosign (Image sign).
 - **CD k8s**: Cấu hình OPA Gatekeeper policy cứng, Network Policy deny-all, PSA restricted.
-- **Runtime**: Falco (phát hiện shell trong container) + Loki (Lưu audit log).
+- **Runtime**: Falco ([Documentation](https://falco.org/docs/)) (phát hiện shell trong container) + Loki ([Documentation](https://grafana.com/docs/loki/latest/)) (Lưu audit log).
 - **Cloud & Design**: Thiết lập AWS baseline (GuardDuty, SecHub) và Threat model 1 trang (STRIDE).

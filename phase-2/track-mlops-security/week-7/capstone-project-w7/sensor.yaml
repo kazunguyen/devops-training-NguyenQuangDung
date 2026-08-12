@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: ml-pipeline-trigger
+spec:
+  template:
+    serviceAccountName: default
+  dependencies:
+    - name: dvc-push-dep
+      eventName: dvc-push
+      eventSourceName: dvc-webhook
+  triggers:
+    - template:
+        name: trigger-ml-pipeline
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: ml-pipeline-
+                namespace: argo
+              spec:
+                entrypoint: ml-dag
+                templates:
+                - name: ml-dag
+                  dag:
+                    tasks:
+                    - name: data-prep
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Kéo dữ liệu từ DVC và tiền xử lý"}]
+                    - name: train-model
+                      dependencies: [data-prep]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Huấn luyện mô hình và ghi log metrics lên MLflow"}]
+                    - name: eval-model
+                      dependencies: [train-model]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Đánh giá mô hình đạt độ chính xác cao"}]
+                    - name: deploy-model
+                      dependencies: [eval-model]
+                      template: echo-task
+                      arguments:
+                        parameters: [{name: message, value: "Triển khai mô hình sang KServe Canary"}]
+                - name: echo-task
+                  inputs:
+                    parameters:
+                    - name: message
+                  container:
+                    image: alpine:latest
+                    command: [sh, -c]
+                    args: ["echo '{{inputs.parameters.message}}'; sleep 3"]
