@@ -27,7 +27,7 @@ jobs:
         env:
           # Secret PHILOBIBLUS_REPO_PAT chứa GitHub Personal Access Token của bạn
           # Thay thế <GITHUB_USERNAME> bằng tên tài khoản của bạn
-          TARGET_REPO_URL: https://${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/<GITHUB_USERNAME>/philobiblus.git
+          TARGET_REPO_URL: https://${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/kazunguyen/philobiblus.git
         run: |
           echo "Bắt đầu đồng bộ thư mục philobiblus..."
           
