@@ -26,7 +26,7 @@ jobs:
       
       - name: Push Philobiblus bằng Git Subtree
         env:
-          TARGET_REPO_URL: https://${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/kazunguyen/philobiblus.git
+          TARGET_REPO_URL: https://kazunguyen:${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/kazunguyen/philobiblus.git
         run: |
           echo "Bắt đầu đồng bộ thư mục philobiblus..."
           
