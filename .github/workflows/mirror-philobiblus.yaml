@@ -7,6 +7,7 @@ on:
       - philobiblus
     paths:
       - 'phase-2/track-mlops-security/philobiblus/**'
+      - '.github/workflows/mirror-philobiblus.yaml'
 
 jobs:
   mirror:
@@ -15,7 +16,6 @@ jobs:
       - name: Checkout Root Repo
         uses: actions/checkout@v4
         with:
-          # Cần fetch toàn bộ lịch sử commit để lệnh subtree tính toán đúng
           fetch-depth: 0 
       
       - name: Cấu hình Git Identity
@@ -25,16 +25,12 @@ jobs:
       
       - name: Push Philobiblus bằng Git Subtree
         env:
-          # Secret PHILOBIBLUS_REPO_PAT chứa GitHub Personal Access Token của bạn
-          # Thay thế <GITHUB_USERNAME> bằng tên tài khoản của bạn
           TARGET_REPO_URL: https://${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/kazunguyen/philobiblus.git
         run: |
           echo "Bắt đầu đồng bộ thư mục philobiblus..."
           
-          # Lấy tên nhánh hiện tại (main hoặc philobiblus)
           CURRENT_BRANCH=${GITHUB_REF#refs/heads/}
           
-          # Đẩy nguyên thư mục philobiblus sang repo thứ hai, đúng với nhánh tương ứng
           git subtree push --prefix=phase-2/track-mlops-security/philobiblus $TARGET_REPO_URL $CURRENT_BRANCH
           
           echo "Đồng bộ thành công nhánh $CURRENT_BRANCH!"
