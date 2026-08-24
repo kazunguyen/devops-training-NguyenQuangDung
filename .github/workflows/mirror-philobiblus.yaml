@@ -32,6 +32,13 @@ jobs:
           
           CURRENT_BRANCH=${GITHUB_REF#refs/heads/}
           
-          git subtree push --prefix=phase-2/track-mlops-security/philobiblus $TARGET_REPO_URL $CURRENT_BRANCH
+          # Map branch "philobiblus" to "main" on target repo
+          if [ "$CURRENT_BRANCH" = "philobiblus" ]; then
+            TARGET_BRANCH="main"
+          else
+            TARGET_BRANCH="$CURRENT_BRANCH"
+          fi
           
-          echo "Đồng bộ thành công nhánh $CURRENT_BRANCH!"
+          git subtree push --prefix=phase-2/track-mlops-security/philobiblus $TARGET_REPO_URL $TARGET_BRANCH
+          
+          echo "Đồng bộ thành công sang nhánh $TARGET_BRANCH!"
