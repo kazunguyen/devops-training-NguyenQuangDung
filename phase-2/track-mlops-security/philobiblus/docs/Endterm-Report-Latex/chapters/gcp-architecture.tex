@@ -1,0 +1,102 @@
+\definecolor{gcpCleanInk}{HTML}{243447}
+\definecolor{gcpCleanProject}{HTML}{64748B}
+\definecolor{gcpCleanCluster}{HTML}{2563EB}
+\definecolor{gcpCleanClusterFill}{HTML}{EFF6FF}
+\definecolor{gcpCleanEdgeStroke}{HTML}{1D4ED8}
+\definecolor{gcpCleanEdgeFill}{HTML}{DBEAFE}
+\definecolor{gcpCleanOpsStroke}{HTML}{7C3AED}
+\definecolor{gcpCleanOpsFill}{HTML}{F5F3FF}
+\definecolor{gcpCleanManagedFill}{HTML}{F8FAFC}
+\definecolor{gcpCleanManagedStroke}{HTML}{475569}
+\definecolor{gcpCleanRuntime}{HTML}{1D4ED8}
+\definecolor{gcpCleanData}{HTML}{C2410C}
+\definecolor{gcpCleanArtifact}{HTML}{15803D}
+\definecolor{gcpCleanInfra}{HTML}{64748B}
+
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  >=latex,
+  font=\scriptsize\sffamily,
+  every node/.style={text=gcpCleanInk},
+  box/.style={draw=gcpCleanInk, line width=0.75pt, rounded corners=3pt, align=center, inner sep=5pt, minimum height=9mm},
+  client/.style={box, fill=white, draw=gcpCleanManagedStroke},
+  edgebox/.style={box, fill=gcpCleanEdgeFill, draw=gcpCleanEdgeStroke},
+  namespace/.style={box, fill=white, draw=gcpCleanCluster, minimum height=1.4cm},
+  mlops/.style={box, fill=gcpCleanOpsFill, draw=gcpCleanOpsStroke, minimum height=1.4cm},
+  managed/.style={box, fill=gcpCleanManagedFill, draw=gcpCleanManagedStroke, minimum width=3.0cm},
+  runtimeedge/.style={->, line width=1.0pt, draw=gcpCleanRuntime},
+  dataedge/.style={->, line width=0.9pt, draw=gcpCleanData, dashed},
+  artifactedge/.style={->, line width=0.95pt, draw=gcpCleanArtifact},
+  infraedge/.style={->, line width=0.85pt, draw=gcpCleanInfra, dashed}
+]
+
+% External frontend path.
+\node[client, minimum width=1.9cm] (browser) at (1.0,8.7) {Trình duyệt};
+\node[client, minimum width=2.35cm] (pages) at (3.75,8.7) {GitHub Pages\\\scriptsize React static site};
+
+% Google Cloud boundary.
+\draw[draw=gcpCleanProject, line width=1.15pt, rounded corners=7pt]
+  (4.9,0.4) rectangle (20.0,10.4);
+\node[font=\bfseries\large\sffamily, anchor=west] at (5.25,9.95)
+  {Google Cloud deployment architecture};
+
+\node[edgebox, minimum width=2.55cm] (proxy) at (6.2,8.7)
+  {Cloud Run Proxy\\\scriptsize HTTPS entrypoint};
+\node[edgebox, minimum width=2.9cm] (gateway) at (9.35,8.7)
+  {GKE Gateway + Cloud Armor\\\scriptsize protected API edge};
+
+% Unified GKE cluster.
+\draw[draw=gcpCleanCluster, line width=1.15pt, rounded corners=6pt, fill=gcpCleanClusterFill]
+  (5.35,1.35) rectangle (12.25,7.65);
+\node[font=\bfseries\small\sffamily, anchor=west, text=gcpCleanCluster]
+  at (5.7,7.28) {GKE Autopilot Cluster};
+\node[namespace, minimum width=2.75cm] (appns) at (7.2,4.5)
+  {namespace\\\texttt{philobiblus}\\[2pt]
+   \scriptsize Backend\\Redis\\Recommendation};
+\node[mlops, minimum width=2.8cm] (mlopsns) at (10.45,4.5)
+  {namespace\\\texttt{philobiblus-mlops}\\[2pt]
+   \scriptsize Retrain CronJob\\MLflow};
+
+% Managed services outside GKE.
+\node[managed] (sql) at (16.4,7.35)
+  {Cloud SQL PostgreSQL\\\scriptsize application data};
+\node[managed] (gcs) at (16.4,5.95)
+  {Cloud Storage\\\scriptsize model, snapshot, release};
+\node[managed] (registry) at (16.4,4.55)
+  {Artifact Registry\\\scriptsize Docker image};
+\node[managed] (secrets) at (16.4,3.15)
+  {Secret Manager\\\scriptsize secrets, identity};
+\node[managed] (monitoring) at (16.4,1.75)
+  {Cloud Monitoring\\\scriptsize logs, metrics, alerts};
+
+% Application traffic.
+\draw[runtimeedge] (browser.east) -- (pages.west);
+\draw[runtimeedge] (pages.east) -- (proxy.west);
+\draw[runtimeedge] (proxy.east) -- (gateway.west);
+\draw[runtimeedge] (gateway.south) -- (9.35,7.65);
+
+% GKE-to-managed-service relationships, one horizontal lane per service.
+\draw[dataedge] (12.25,7.35) -- (14.9,7.35);
+\draw[artifactedge] (12.25,5.95) -- (14.9,5.95);
+\draw[infraedge] (12.25,4.55) -- (14.9,4.55);
+\draw[infraedge] (12.25,3.15) -- (14.9,3.15);
+\draw[infraedge] (12.25,1.75) -- (14.9,1.75);
+
+\node[font=\scriptsize\sffamily, fill=white, inner sep=2pt] at (13.55,7.62) {dữ liệu};
+\node[font=\scriptsize\sffamily, fill=white, inner sep=2pt] at (13.55,6.22) {artifact / model};
+\node[font=\scriptsize\sffamily, fill=white, inner sep=2pt] at (13.55,4.82) {image};
+\node[font=\scriptsize\sffamily, fill=white, inner sep=2pt] at (13.55,3.42) {secret};
+\node[font=\scriptsize\sffamily, fill=white, inner sep=2pt] at (13.55,2.02) {logs / metrics};
+
+% Legend.
+\node[anchor=west, font=\scriptsize\sffamily] at (5.7,0.9)
+  {\textcolor{gcpCleanRuntime}{\rule[0.65ex]{0.65cm}{1pt}} Application traffic};
+\node[anchor=west, font=\scriptsize\sffamily] at (9.2,0.9)
+  {\textcolor{gcpCleanData}{\rule[0.65ex]{0.65cm}{1pt}} Business data};
+\node[anchor=west, font=\scriptsize\sffamily] at (12.4,0.9)
+  {\textcolor{gcpCleanArtifact}{\rule[0.65ex]{0.65cm}{1pt}} ML artifacts};
+\node[anchor=west, font=\scriptsize\sffamily] at (16.3,0.9)
+  {\textcolor{gcpCleanInfra}{\rule[0.65ex]{0.65cm}{1pt}} Platform \& observability};
+\end{tikzpicture}%
+}

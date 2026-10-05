@@ -1,0 +1,137 @@
+\documentclass[tikz,border=12pt]{standalone}
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usetikzlibrary{arrows.meta,positioning,calc}
+
+\definecolor{ink}{HTML}{243447}
+\definecolor{clusterstroke}{HTML}{64748B}
+\definecolor{appstroke}{HTML}{2563EB}
+\definecolor{appfill}{HTML}{EFF6FF}
+\definecolor{opsstroke}{HTML}{7C3AED}
+\definecolor{opsfill}{HTML}{F5F3FF}
+\definecolor{runtime}{HTML}{1D4ED8}
+\definecolor{control}{HTML}{C2410C}
+\definecolor{artifact}{HTML}{15803D}
+\definecolor{externalfill}{HTML}{F8FAFC}
+\definecolor{externalstroke}{HTML}{475569}
+\definecolor{bridgefill}{HTML}{FFF7ED}
+\definecolor{bridgestroke}{HTML}{EA580C}
+
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  font=\sffamily\footnotesize,
+  >=Latex,
+  every node/.style={text=ink},
+  box/.style={draw=ink, line width=0.7pt, rounded corners=3pt, align=center, inner sep=5pt, minimum height=0.92cm},
+  app/.style={box, fill=appfill, draw=appstroke},
+  ops/.style={box, fill=opsfill, draw=opsstroke},
+  external/.style={box, fill=externalfill, draw=externalstroke},
+  bridge/.style={box, fill=bridgefill, draw=bridgestroke, line width=0.9pt, minimum width=2.8cm},
+  runtimeedge/.style={->, line width=1.05pt, draw=runtime},
+  controledge/.style={->, line width=0.95pt, draw=control, dashed},
+  artifactedge/.style={->, line width=1.0pt, draw=artifact},
+  edgelabel/.style={font=\scriptsize\sffamily, fill=white, inner sep=2pt, text=ink, align=center}
+]
+
+% Cluster and namespace boundaries.
+\draw[draw=clusterstroke, line width=1.15pt, rounded corners=7pt]
+  (0,0.35) rectangle (20,13.1);
+\node[font=\bfseries\large\sffamily, anchor=west] at (0.5,12.65)
+  {GKE Autopilot Cluster};
+
+\draw[draw=appstroke, line width=1.0pt, rounded corners=6pt]
+  (0.5,3.75) rectangle (8.0,12.05);
+\node[font=\bfseries\small\sffamily, anchor=west, text=appstroke]
+  at (0.8,11.65) {namespace \texttt{philobiblus}};
+
+\draw[draw=opsstroke, line width=1.0pt, rounded corners=6pt]
+  (12.0,3.75) rectangle (19.5,12.05);
+\node[font=\bfseries\small\sffamily, anchor=west, text=opsstroke]
+  at (12.3,11.65) {namespace \texttt{philobiblus-mlops}};
+
+% App namespace: three clean rows.
+\node[app, minimum width=2.35cm] (gateway) at (2.15,10.15)
+  {Gateway / HTTPRoute\\\scriptsize prefix \texttt{/api}};
+\node[app, minimum width=2.45cm] (backend) at (5.9,10.15)
+  {Backend Deployment\\\scriptsize HPA 2--6 pod};
+\node[app, minimum width=2.35cm] (redis) at (2.15,8.0)
+  {Redis Service\\\scriptsize cache, rate limit};
+\node[app, minimum width=2.55cm] (recommendation) at (5.9,8.0)
+  {Recommendation Service\\\scriptsize TF--IDF, :8080};
+\node[app, minimum width=2.35cm] (configmap) at (2.15,5.65)
+  {ConfigMap\\\texttt{model-release}};
+\node[app, minimum width=2.55cm] (rolebinding) at (5.9,5.65)
+  {RoleBinding / Role\\\scriptsize trainer-promoter};
+\node[app, minimum width=2.45cm] (fetcher) at (5.9,4.55)
+  {model-fetcher\\\scriptsize initContainer};
+
+% MLOps namespace.
+\node[ops, minimum width=2.5cm] (mlflow) at (15.75,10.15)
+  {MLflow Service\\\scriptsize run, metric, registry};
+\node[ops, minimum width=2.65cm] (trainer) at (15.75,8.0)
+  {Retrain CronJob\\\scriptsize snapshot, train, evaluate};
+\node[ops, minimum width=2.55cm] (sa) at (15.75,5.65)
+  {Trainer ServiceAccount\\\scriptsize Workload Identity};
+
+% Explicit bridge lanes in the center gap.
+\node[bridge] (healthbridge) at (10.0,8.0)
+  {HTTP validation\\\scriptsize \texttt{/health}};
+\node[bridge] (rbacbridge) at (10.0,5.65)
+  {RBAC promotion\\\scriptsize release quyền};
+
+% Shared resources outside both namespaces.
+\node[external, minimum width=3.25cm] (sql) at (4.0,1.65)
+  {Cloud SQL PostgreSQL\\\scriptsize catalog, user data};
+\node[external, minimum width=3.8cm] (gcs) at (10.0,1.65)
+  {GCS artifact bucket\\\scriptsize snapshots / models / releases};
+\node[external, minimum width=3.3cm] (monitoring) at (16.0,1.65)
+  {Cloud Monitoring\\\scriptsize logs, metrics, alerting};
+
+% Runtime request paths.
+\draw[runtimeedge] (gateway.east) -- (backend.west);
+\draw[runtimeedge] (backend.south west) -- (4.85,9.05) |- (redis.north)
+  node[pos=0.42, edgelabel, above] {cache / rate limit};
+\draw[runtimeedge] (backend.south east) -- (6.65,9.05) |- (recommendation.north)
+  node[pos=0.45, edgelabel, right] {recommendation};
+
+% MLOps internal path.
+\draw[controledge] (trainer.north) -- (mlflow.south)
+  node[pos=0.5, edgelabel, right] {run / metric};
+
+% Cross-namespace HTTP validation lane.
+\draw[controledge] (trainer.west) -- (healthbridge.east);
+\draw[controledge] (healthbridge.west) -- (8.55,8.0) -- (recommendation.east);
+\node[edgelabel] at (10.0,8.72) {trainer \textrightarrow Recommendation};
+
+% Cross-namespace RBAC promotion lane.
+\draw[controledge] (sa.west) -- (rbacbridge.east);
+\draw[controledge] (rbacbridge.west) -- (8.55,5.65) -- (rolebinding.east);
+\node[edgelabel] at (10.0,6.36) {ServiceAccount mlops \textrightarrow RoleBinding};
+\draw[controledge] (rolebinding.south west) -- (4.05,4.68) -- (configmap.south east);
+\node[edgelabel] at (4.0,4.42) {patch \texttt{model-release}};
+
+% Data and artifact paths routed below the namespace boxes.
+\draw[controledge] (backend.south) -- (5.9,3.15) -- (sql.north)
+  node[pos=0.5, edgelabel, right] {application data};
+\draw[controledge] (trainer.south) -- (14.0,3.15) -- (sql.north east)
+  node[pos=0.5, edgelabel, right] {training snapshot};
+\draw[artifactedge] (trainer.south west) -- (13.8,3.55) -- (gcs.north east)
+  node[pos=0.55, edgelabel, above] {write model / release};
+\draw[artifactedge] (gcs.north west) -- (7.9,3.0) -- (fetcher.south)
+  node[pos=0.52, edgelabel, below] {download + SHA--256};
+\draw[controledge] (trainer.south east) -- (17.4,3.25) -- (monitoring.north east)
+  node[pos=0.5, edgelabel, right] {logs / metrics};
+
+% Legend.
+\node[anchor=west, font=\scriptsize\sffamily] at (0.7,0.68)
+  {\textcolor{runtime}{\rule[0.5ex]{0.7cm}{1pt}} runtime request};
+\node[anchor=west, font=\scriptsize\sffamily] at (5.7,0.68)
+  {\textcolor{control}{\rule[0.5ex]{0.7cm}{1pt}} MLOps control / validation};
+\node[anchor=west, font=\scriptsize\sffamily] at (12.0,0.68)
+  {\textcolor{artifact}{\rule[0.5ex]{0.7cm}{1pt}} model / artifact data};
+
+\end{tikzpicture}
+\end{document}

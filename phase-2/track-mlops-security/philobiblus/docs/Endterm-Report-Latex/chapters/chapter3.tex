@@ -1,109 +1,107 @@
-\reportchapter{III. TÓM TẮT LÝ THUYẾT, GIẢI PHÁP, THUẬT TOÁN}
+\reportchapter{III. LÝ THUYẾT, GIẢI PHÁP, THUẬT TOÁN VÀ QUÁ TRÌNH PHÁT TRIỂN HỆ THỐNG}
 \reportsection{a. Các lý thuyết, giải pháp và thuật toán liên quan}
 
 \reportsubsection{Các lý thuyết nền tảng}
-\textbf{DevOps.} DevOps là phương pháp kết nối hoạt động phát triển và vận hành thông qua một quy trình liên tục gồm viết mã, kiểm thử, đóng gói, triển khai và theo dõi hệ thống. Trong dự án, DevOps được thể hiện qua CI/CD, container, Infrastructure as Code, Helm và Kubernetes để giảm thao tác thủ công và bảo đảm mỗi phiên bản được triển khai theo cùng một quy trình.
+\textbf{DevOps:} là phương pháp kết nối hoạt động phát triển và vận hành thông qua một quy trình liên tục gồm viết mã, kiểm thử, đóng gói, triển khai và theo dõi hệ thống. Trong dự án, DevOps được thể hiện qua CI/CD, container, Infrastructure as Code, Helm và Kubernetes để giảm thao tác thủ công và bảo đảm mỗi phiên bản được triển khai theo cùng một quy trình \cite{devops-model}.
 
-\textbf{DevSecOps.} DevSecOps mở rộng DevOps bằng cách đưa bảo mật vào từng bước của quy trình phát triển, thay vì chỉ kiểm tra trước khi đưa hệ thống lên production. Các nội dung kiểm tra gồm mã nguồn, dependency, container image, secret, cấu hình hạ tầng và quyền truy cập. Với Philobiblus, các bước kiểm tra này được tích hợp vào CI/CD để phát hiện sớm rủi ro trước khi artifact được phát hành.
+\textbf{DevSecOps} mở rộng DevOps bằng cách đưa bảo mật vào từng bước của quy trình phát triển, thay vì chỉ kiểm tra trước khi đưa hệ thống lên production. Các nội dung kiểm tra gồm mã nguồn, dependency, container image, secret, cấu hình hạ tầng và quyền truy cập. Với Philobiblus, các bước kiểm tra này được tích hợp vào CI/CD để phát hiện sớm rủi ro trước khi artifact được phát hành \cite{devsecops-model}.
 
-\textbf{CI/CD.} tự động hóa chuỗi kiểm thử, đóng gói và phát hành, giúp mỗi thay đổi được kiểm tra trước khi đi vào môi trường chạy.
+\textbf{CI/CD} tự động hóa chuỗi kiểm thử, đóng gói và phát hành, giúp mỗi thay đổi được kiểm tra trước khi đi vào môi trường chạy \cite{devops-model,github-actions}.
 
-\textbf{Infrastructure as Code.} biểu diễn hạ tầng bằng code có thể được quản lý bằng git, giúp quản lý hạ tầng được nhất quán.
+\textbf{Infrastructure as Code} biểu diễn hạ tầng bằng code có thể được quản lý bằng Git, giúp quản lý hạ tầng nhất quán và cho phép xem trước thay đổi trước khi áp dụng \cite{iac-terraform,terraform-docs}.
 
-\textbf{Containerization.} giúp đóng gói ứng dụng cùng dependency trong image bất biến, giảm khác biệt giữa môi trường phát triển, kiểm thử và production \cite{docker}.
+\textbf{Containerization} giúp đóng gói ứng dụng cùng dependency trong image bất biến, giảm khác biệt giữa môi trường phát triển, kiểm thử và production \cite{docker}.
 
-\textbf{Điều phối workload.} Kubernetes quản lý Pod, Deployment, Service, probe, rollout và autoscaling để workload có thể tự phục hồi và mở rộng khi lượng người dùng biến động\cite{kubernetes}.
+\textbf{Điều phối workload:} Kubernetes quản lý Pod, Deployment, Service, probe, rollout và autoscaling để workload có thể tự phục hồi và mở rộng khi lượng người dùng biến động \cite{kubernetes}.
 
-\textbf{MLOps.} là tập hợp các thực hành kết hợp giữa phát triển mô hình ML và vận hành hệ thống nhằm tự động hóa, chuẩn hóa và quản lý vòng đời mô hình một cách hiệu quả
+\textbf{MLOps} là tập hợp các thực hành kết hợp giữa phát triển mô hình ML và vận hành hệ thống nhằm tự động hóa, chuẩn hóa và quản lý vòng đời mô hình một cách hiệu quả \cite{mlops-gcp}.
 
-\textbf{Observability.} là việc đo lường và theo dõi trạng thái bên trong của một hệ thống phần mềm dựa trên các dữ liệu đầu ra mà nó tạo ra trong quá trình hoạt động
+\textbf{Observability:} là việc đo lường và theo dõi trạng thái bên trong của một hệ thống phần mềm dựa trên các dữ liệu đầu ra mà nó tạo ra trong quá trình hoạt động \cite{observability-otel}.
 
 \reportsubsection{Các giải pháp và công cụ áp dụng}
-\textbf{Terraform.} là một công cụ giúp quản lý và tự động hóa hạ tầng công nghệ dưới dạng mã nguồn (IaC).
+\textbf{Terraform:} là một công cụ giúp quản lý và tự động hóa hạ tầng công nghệ dưới dạng mã nguồn (IaC) thông qua các bước viết cấu hình, lập kế hoạch và áp dụng thay đổi \cite{terraform-docs}.
 
-\textbf{Google Cloud và GKE.} GKE Autopilot cung cấp cluster Kubernetes managed, còn Google Cloud cung cấp các dịch vụ cloud để deploy hệ thống vào hoạt động.
+\textbf{Google Cloud và GKE:} GKE Autopilot cung cấp cluster Kubernetes managed, còn Google Cloud cung cấp các dịch vụ cloud để deploy hệ thống vào hoạt động \cite{gke-autopilot}.
 
-\textbf{Docker.} tạo image cho các thành phần của hệ thống như frontend, backend, mô hình gợi ý,... để có thể deploy lên các môi trường khác như cloud.
+\textbf{Docker} tạo image cho các thành phần của hệ thống như frontend, backend, mô hình gợi ý,... để có thể deploy lên các môi trường khác như cloud.
 
-\textbf{Helm.} giúp người dùng dễ dàng định nghĩa, cài đặt, nâng cấp và quản lý các cấu hình phức tạp trên cụm Kubernetes thông qua các gói đóng gói sẵn gọi là Chart.
+\textbf{Helm} giúp người dùng dễ dàng định nghĩa, cài đặt, nâng cấp và quản lý các cấu hình phức tạp trên cụm Kubernetes thông qua các gói đóng gói sẵn gọi là Chart \cite{helm-charts}.
 
-\textbf{GitHub Actions.} là nền tảng tự động hóa và CI/CD tích hợp trực tiếp ngay trên GitHub.
+\textbf{GitHub Actions:} là nền tảng tự động hóa và CI/CD tích hợp trực tiếp ngay trên GitHub \cite{github-actions}.
 
-\textbf{DVC.} (Data Version Control) là công cụ quản lý phiên bản dữ liệu và quy trình xử lý dữ liệu, hoạt động cùng với Git. \cite{dvc}.
+\textbf{DVC} (Data Version Control) là công cụ quản lý phiên bản dữ liệu và quy trình xử lý dữ liệu, hoạt động cùng với Git. \cite{dvc}.
 
-\textbf{MLflow.} MLflow là nền tảng theo dõi thí nghiệm và quản lý vòng đời mô hình học máy. Công cụ lưu thông tin về run, parameter, metric, artifact và model version \cite{mlflow}.
+\textbf{MLflow} là nền tảng theo dõi thí nghiệm và quản lý vòng đời mô hình học máy. Công cụ lưu thông tin về run, parameter, metric, artifact và model version \cite{mlflow}.
 
-\textbf{Cloud SQL.} Cloud SQL là dịch vụ của Google Cloud dùng để lưu trữ dữ liệu theo bảng và quan hệ giữa các bảng.
+\textbf{Cloud SQL} là dịch vụ cơ sở dữ liệu quan hệ được quản lý hoàn toàn trên Google Cloud, trong dự án sử dụng PostgreSQL để lưu dữ liệu nghiệp vụ \cite{cloud-sql}.
 
-\textbf{Redis.} Redis là hệ thống lưu trữ dữ liệu tạm thời trong bộ nhớ, cho phép đọc và ghi nhanh hơn so với việc truy vấn lại cơ sở dữ liệu chính.
+\textbf{Redis} là máy chủ cấu trúc dữ liệu trong bộ nhớ, thường được dùng làm cache, queue hoặc lớp xử lý dữ liệu có yêu cầu phản hồi nhanh \cite{redis-datatypes}.
 
-\textbf{Cloud Monitoring.} Cloud Monitoring là dịch vụ của Google Cloud dùng để thu thập, hiển thị và cảnh báo dựa trên các chỉ số vận hành của tài nguyên.
+\textbf{Cloud Monitoring} là dịch vụ của Google Cloud dùng để thu thập, hiển thị và cảnh báo dựa trên các chỉ số vận hành của tài nguyên \cite{cloud-monitoring}.
 
-\textbf{Managed Service for Prometheus.} Managed Service for Prometheus là dịch vụ quản lý Prometheus trên Google Cloud, dùng để thu thập và truy vấn metric do các workload Kubernetes xuất ra. \cite{prometheus}.
+\textbf{Managed Service for Prometheus:} Managed Service for Prometheus là dịch vụ quản lý Prometheus trên Google Cloud, dùng để thu thập và truy vấn metric do các workload Kubernetes xuất ra \cite{prometheus,managed-prometheus}.
 
 \reportsubsection{Các thuật toán sử dụng}
-\textbf{TF-IDF.} TF-IDF biến metadata sách thành vector thưa, trong đó các từ xuất hiện nhiều trong một sách nhưng ít xuất hiện trong catalog có trọng số cao \cite{sklearn}.
+\textbf{TF-IDF} biến metadata sách thành vector thưa, trong đó các từ xuất hiện nhiều trong một sách nhưng ít xuất hiện trong catalog có trọng số cao \cite{sklearn}.
 
-\textbf{Cosine similarity.} Cosine similarity đo góc giữa hai vector TF-IDF để xếp hạng các sách có nội dung gần với sách nguồn mà không phụ thuộc độ dài tuyệt đối của chuỗi.
+\textbf{Cosine similarity} là phương pháp đo góc giữa hai vector TF-IDF để xếp hạng các sách có nội dung gần với sách nguồn mà không phụ thuộc độ dài tuyệt đối của chuỗi \cite{sklearn}.
 
-\textbf{Snapshot hash và quality gate.} Hệ thống băm nội dung logic của snapshot, đối chiếu schema và mức suy giảm catalog trước khi cho phép candidate thay champion.
+\textbf{Snapshot hash và quality gate:} Hệ thống băm nội dung logic của snapshot, đối chiếu schema và mức suy giảm catalog trước khi cho phép candidate thay champion; cách kiểm soát này được triển khai riêng cho pipeline của Philobiblus và liên kết với dữ liệu, run cùng model version \cite{dvc,mlflow}.
 
 \reportsection{b. Quá trình phát triển hệ thống}
-Em xây dựng frontend React, backend FastAPI và cơ sở dữ liệu PostgreSQL. Hệ thống cung cấp đăng ký, đăng nhập, hồ sơ, thư viện cá nhân, tiến độ đọc, nhận xét, chia sẻ và gợi ý sách.
 
-\reportsubsection{Kiến trúc tổng thể và ranh giới trách nhiệm}
-React được phát hành dưới dạng trang tĩnh trên GitHub Pages; FastAPI kiểm tra token, quyền sở hữu và nghiệp vụ; PostgreSQL lưu dữ liệu quan hệ. Frontend chỉ gọi API và không truy cập trực tiếp database hoặc model artifact.
+\reportsubsection{Hoàn thiện mã nguồn và artifact}
+\textbf{Frontend} được phát triển bằng React 18 và Vite. Giao diện tổ chức theo component-based architecture, sử dụng shadcn/ui với style base-nova, Tailwind CSS và Lucide icons; React Router quản lý điều hướng, còn các Context Provider tách trạng thái xác thực, chế độ xem và cài đặt. Các service module gọi REST API, nên frontend không thể truy cập trực tiếp vào database hoặc model artifact. Frontend được deploy trực tiếp lên GitHub Pages.
 
-Từ GitHub Pages, request API HTTPS đi qua Cloud Run proxy rồi tới GKE Gateway. Proxy tách endpoint /health cho liveness probe của Cloud Run và chuyển tiếp /api tới Gateway. Gateway cùng HTTPRoute chỉ công khai tiền tố /api; Cloud Armor bảo vệ tầng biên, Service chuyển request tới backend Pod, còn NetworkPolicy giới hạn traffic giữa backend, Redis, recommendation và hệ thống thu metric.
+\textbf{Backend} dùng FastAPI và Uvicorn, tổ chức router theo domain như authentication, books, users, reviews và reading history. SQLAlchemy quản lý model và session database, Pydantic schema kiểm tra dữ liệu vào ra, còn dependency injection cung cấp database session cho từng request. JWT, quyền sở hữu và visibility đối với thông tin sách được kiểm tra khi gọi API; middleware bổ sung CORS, metric và trace. Cuối cùng, em đóng gói toàn bộ thành docker image để triển khai lên Kubernetes.
 
-\clearpage
+\textbf{Cơ sở dữ liệu và cache:} PostgreSQL lưu dữ liệu nghiệp vụ theo schema được khai báo bằng SQLAlchemy; môi trường production sử dụng Cloud SQL thay cho database container trong GKE. Redis đảm nhiệm cache catalog và rate limit, giúp giảm số lần truy vấn database và giới hạn các request tốn tài nguyên. Backend cấu hình connection pool, timeout và cơ chế bỏ qua cache khi Redis tạm thời không khả dụng.
+
+\textbf{Recommendation service:} chạy bằng FastAPI, sử dụng các metadata của sách như tên, tác giả, thể loại để gợi ý sách tương đồng. Pipeline tạo snapshot catalog, chuẩn hóa dữ liệu và dùng TF-IDF để huấn luyện model Joblib; DVC quản lý các bước xử lý, còn MLflow lưu metric và phiên bản model. Khi hoạt động, hệ thống xếp hạng sách bằng cosine similarity và đưa ra top 5 sách có cosine similarity cao nhất.
+
+\reportsubsection{Tạo Helm chart}
+Hệ thống được tách thành 2 namespace: \texttt{philobiblus} chứa các workload phục vụ người dùng, còn \texttt{philobiblus-mlops} chứa các workload huấn luyện và phát hành model. Việc tách ra giúp hệ thống gợi ý sách có thể được phát triển và vận hành độc lập với các workload phục vụ người dùng, giảm rủi ro khi quá trình huấn luyện model gặp lỗi. Dưới đây là mô tả luồng hoạt động của hệ thống được thiết kế trong Helm chart:
+
+\textbf{Luồng runtime:} Người dùng đi qua Gateway để vào nhóm workload ứng dụng. Gateway chuyển yêu cầu đến Backend; Backend đọc và ghi dữ liệu nghiệp vụ trong Cloud SQL, sử dụng Redis để lưu tạm dữ liệu thường dùng, rồi giao tiếp với Recommendation Service khi cần tạo gợi ý. Recommendation Service dùng model hiện hành đã được nạp trong Pod và trả kết quả về Backend để hoàn thành request.
+
+\textbf{Luồng MLOps control:} Retrain CronJob trong namespace MLOps định kỳ lấy dữ liệu cần thiết, tạo snapshot, huấn luyện và đánh giá model. CronJob gửi run, metric và phiên bản model cho MLflow; trainer đồng thời kiểm tra Recommendation Service trước khi cho phép phát hành. Các workload gửi log và metric đến Cloud Monitoring để theo dõi rollout, lỗi và mức sử dụng tài nguyên. Các thao tác này được giới hạn bằng quyền của trainer, không làm namespace MLOps tham gia vào luồng request người dùng.
+
+\textbf{Luồng artifact/model:} Sau khi model đạt điều kiện phát hành, trainer ghi model và thông tin release vào GCS. Recommendation Service lấy artifact tương ứng từ GCS, kiểm tra tính toàn vẹn rồi nạp model mới. Vì vậy, GCS đóng vai trò vùng lưu trữ trung gian giữa pipeline huấn luyện và workload phục vụ gợi ý.
+
 \begin{figure}[H]
 \centering
-\input{chapters/system-architecture}
-\caption{Kiến trúc triển khai thực tế và luồng phụ thuộc chính của Philobiblus}
-\label{fig:1}
+\input{chapters/kubernetes-architecture}
+\caption{Các workload và object chính trong cụm GKE của Philobiblus}
+\label{fig:kubernetes-architecture}
 \end{figure}
-Backend kết nối Cloud SQL qua Cloud SQL Auth Proxy. Redis lưu cache catalog, trạng thái rate limit và circuit breaker dùng chung. Khi traffic recommendation vượt 12 request trong 10 giây, backend không gọi recommendation service, trả trạng thái unavailable trong 30 giây rồi tự mở lại circuit. Nếu Redis lỗi, cơ chế này fail-open để không làm gián đoạn catalog chính. Recommendation service nạp artifact đã kiểm tra và trả danh sách xếp hạng khi circuit đang đóng.
 
-\reportsubsection{Mô hình dữ liệu và kiểm soát quyền truy cập}
-User và UserSettings lưu định danh, trạng thái và thiết lập. Book gắn với chủ sở hữu, tiến độ, metadata và mức public, private hoặc restricted. BookReadingProgress, ReadingHistory, Review, Follow và Friendship ghi nhận tiến độ riêng và tương tác xã hội mà không sửa dữ liệu của người khác.
+\reportsubsection{Triển khai trên Google Cloud Kubernetes Engine}
+Helm chart sau khi được kiểm thử và xác minh, được deploy lên GKE Autopilot bằng Terraform. Luồng hoạt động trên Google Cloud gồm:
 
-Backend kiểm tra token cùng user\_id của tài nguyên trước thao tác đọc, sửa hoặc xóa. Endpoint quản trị yêu cầu is\_admin; truy vấn công khai lọc visibility trước khi trả dữ liệu. Việc ẩn nút ở frontend không được xem là biện pháp phân quyền.
+\textbf{Application traffic:} Người dùng truy cập frontend được phát hành trên GitHub Pages. Request đi qua Cloud Run Proxy rồi tới GKE Gateway và lớp bảo vệ Cloud Armor trước khi vào GKE Autopilot. Trong cluster, namespace ứng dụng tiếp nhận và xử lý request; namespace MLOps không nằm trên đường phục vụ người dùng.
 
-Pipeline kết hợp tên, tác giả, thể loại và nhãn của sách public thành đặc trưng TF-IDF. Dịch vụ gợi ý xếp hạng tối đa năm sách theo cosine similarity, loại sách nguồn và các mục không hợp lệ trước khi trả kết quả.
+\textbf{Business data:} Backend trong GKE đọc và ghi dữ liệu nghiệp vụ vào Cloud SQL PostgreSQL. Redis vẫn chạy trong namespace ứng dụng để lưu tạm dữ liệu thường dùng và giảm truy vấn lặp lại tới database. Cloud SQL được đặt ngoài cluster nên dữ liệu vẫn nằm trong dịch vụ cơ sở dữ liệu managed, còn workload Kubernetes chỉ sử dụng kết nối được cấp quyền.
 
-\reportsection{Giao diện và luồng xác thực}
-Frontend tách route công khai, route cần đăng nhập và route quản trị. AuthContext lưu access token; ProtectedRoute và AdminRoute kiểm soát trải nghiệm, còn backend đưa ra quyết định phân quyền cuối cùng.
+\textbf{ML artifacts:} Retrain CronJob và MLflow trong namespace MLOps lưu snapshot, model và thông tin release vào Cloud Storage. Khi cần triển khai phiên bản mới, workload recommendation lấy artifact từ Cloud Storage để nạp model. Artifact Registry lưu các Docker image được build từ source; GKE sử dụng các image này khi tạo hoặc cập nhật workload.
 
-\clearpage
+\textbf{Platform \& observability:} Secret Manager cung cấp secret và thông tin nhận dạng cho workload theo cơ chế được cấp quyền, thay vì đưa secret trực tiếp vào chart. Cloud Monitoring và Cloud Logging tiếp nhận log, metric và trạng thái vận hành từ cluster để theo dõi rollout, lỗi và mức sử dụng tài nguyên. Terraform giữ vai trò mô tả và tạo các tài nguyên này theo cùng một cấu hình có thể kiểm tra lại.
+
+Tại thời điểm ngày 04/10/2026, cluster \texttt{philobiblus-dev-gke} đang chạy ổn định, tất cả các tài nguyên được deploy và hoạt động bình thường. 
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.94\textwidth]{ui-login.png}
-\caption{Trang đăng nhập được chụp từ frontend Philobiblus chạy cục bộ}
-\label{fig:2}
+\input{chapters/gcp-architecture}
+\caption{Luồng triển khai và các resource Google Cloud của Philobiblus}
+\label{fig:gcp-architecture}
 \end{figure}
-Form đăng nhập gửi username và password tới /api/auth/login, khóa nút khi chờ phản hồi và hiển thị lỗi tại chỗ. Sau xác thực, người dùng truy cập thư viện, thống kê, trang xã hội và cài đặt; quản trị viên có thêm các màn hình quản lý.
 
-Hệ thống hiện được triển khai trên GKE bằng Terraform và Helm. Pipeline DVC tạo dữ liệu huấn luyện; MLflow trên cluster ghi run và model version; artifact bất biến được lưu trên GCS. PodMonitoring gửi metric tới Google Managed Service for Prometheus, còn Cloud Monitoring và Cloud Logging phục vụ quan sát.
+\reportsection{c. Ưu điểm và nhược điểm đang gặp phải}
+\textbf{Ưu điểm.} TF-IDF có chi phí tính toán thấp, dễ giải thích và vẫn có thể tạo gợi ý khi catalog chưa có nhiều lịch sử tương tác. Mô hình này phù hợp với giai đoạn đầu của Philobiblus vì dữ liệu sách và metadata đã có sẵn, trong khi dữ liệu hành vi người dùng còn hạn chế. Khi model được lưu trong MLflow và artifact được quản lý trên Cloud Storage, quá trình huấn luyện và phát hành có thể truy vết theo snapshot, run và phiên bản model.
 
-\reportsection{Vòng đời dữ liệu và mô hình gợi ý}
-Pipeline không đọc trực tiếp một tập dữ liệu đang thay đổi trong suốt quá trình huấn luyện. snapshot\_catalog.py mở transaction repeatable-read, chọn sách public, xuất Parquet và tính snapshot\_id từ dữ liệu logic. validate\_snapshot.py kiểm tra schema, ID, metadata và mức suy giảm catalog so với champion. DVC liên kết snapshot với bước prepare, train và evaluation. Lần xác minh dùng 100 sách và tạo 2.030 đặc trưng; candidate thiếu cohort tương tác được ghi nhận là insufficient\_data nên không được phép thay model đang phục vụ.
+Việc triển khai bằng Terraform, Helm và GKE giúp cấu hình hạ tầng và workload có thể kiểm tra, tái tạo và cập nhật theo cùng một quy trình. Backend có thể mở rộng bằng HPA, Redis giảm các truy vấn lặp lại, còn probe và rollout giúp hạn chế việc đưa Pod chưa sẵn sàng vào phục vụ. Cloud Monitoring và Cloud Logging cũng cung cấp dữ liệu để phát hiện lỗi và theo dõi mức sử dụng tài nguyên sau khi triển khai.
 
-\clearpage
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.94\textwidth]{mlops-pipeline.png}
-\caption{Pipeline snapshot, huấn luyện, đánh giá và phát hành model}
-\label{fig:3}
-\end{figure}
-MLflow lưu tham số, metric, run và model version; GCS giữ snapshot, model cùng release manifest bất biến. Trước khi recommendation service khởi động, model-fetcher tải đúng release, kiểm tra SHA-256 và schema rồi mới công bố file trong volume dùng chung. Promotion cập nhật release pointer bằng resource version, chờ Deployment rollout và gọi health endpoint để đối chiếu model\_version. Nếu rollout hoặc health check thất bại, pipeline khôi phục pointer và annotation trước đó. Nhờ vậy, artifact sai định dạng hoặc sai phiên bản không được đưa vào hệ thống.
+\textbf{Nhược điểm và vấn đề đang gặp phải.} Chất lượng gợi ý vẫn phụ thuộc mạnh vào metadata; TF-IDF chưa khai thác được mức độ tương đồng hình thành từ hành vi của cộng đồng người đọc. Các metric của run hiện tại còn có thể ở trạng thái \textit{insufficient data}, vì vậy chưa nên diễn giải điểm đánh giá như một bằng chứng đầy đủ về chất lượng sản phẩm. Khi dữ liệu tương tác đủ lớn, hệ thống cần bổ sung mô hình kết hợp giữa đặc trưng nội dung và hành vi người dùng.
 
-\reportsection{c. Liên hệ và so sánh với các cách đã nêu}
-TF-IDF không cần ma trận tương tác dày và xử lý tốt catalog mới, đổi lại phụ thuộc chất lượng metadata. Khi lịch sử đọc đủ lớn, hệ thống có thể kết hợp điểm nội dung với hành vi cộng đồng.
+Redis chỉ giữ catalog trong thời gian ngắn và được làm mới khi dữ liệu thay đổi. Nếu Redis tạm thời không khả dụng, Backend bỏ qua cache để tiếp tục phục vụ nhưng sẽ tạo thêm tải cho Cloud SQL. Mỗi Backend Pod dùng pool ba kết nối cơ bản và tối đa thêm hai kết nối, với timeout mười giây; giới hạn này phải được tính cùng HPA để không vượt khả năng của Cloud SQL db-f1-micro.
 
-\reportsection{Các đánh đổi kỹ thuật trong giải pháp}
-Redis cache catalog trong 30 giây và được invalidation khi dữ liệu thay đổi. Nếu Redis lỗi, backend bỏ qua cache để tiếp tục phục vụ, chấp nhận tăng tải tạm thời cho Cloud SQL.
-
-Mỗi backend Pod dùng pool 3 kết nối và tối đa 2 kết nối vượt mức, timeout 10 giây. Giới hạn này được tính cùng HPA để tránh tổng số connection vượt khả năng của Cloud SQL db-f1-micro.
-
-TF-IDF dễ giải thích nhưng chưa khai thác sâu hành vi cộng đồng. GKE chuẩn hóa rollout, probe và autoscaling, đổi lại yêu cầu quản lý chặt tài nguyên, quyền cloud và chi phí.
+GKE Autopilot, Cloud SQL, Cloud Storage, Secret Manager và các lớp bảo vệ mạng giúp hệ thống có cấu trúc rõ ràng hơn, nhưng đồng thời làm tăng số lượng tài nguyên phải quản lý, số quyền IAM cần kiểm soát và chi phí vận hành. Cloud Run Proxy bổ sung một lớp trung gian cho frontend, đổi lại tạo thêm một chặng trong luồng truy cập. Đây là các đánh đổi chấp nhận được cho môi trường thực tập và demo, nhưng cần được xem xét lại nếu hệ thống chuyển sang quy mô người dùng lớn hơn.

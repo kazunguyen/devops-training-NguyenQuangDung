@@ -1,0 +1,122 @@
+\documentclass[tikz,border=12pt]{standalone}
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usetikzlibrary{arrows.meta}
+
+\definecolor{ink}{HTML}{243447}
+\definecolor{gcpstroke}{HTML}{64748B}
+\definecolor{clusterstroke}{HTML}{2563EB}
+\definecolor{clusterfill}{HTML}{EFF6FF}
+\definecolor{appstroke}{HTML}{1D4ED8}
+\definecolor{appfill}{HTML}{DBEAFE}
+\definecolor{opsstroke}{HTML}{7C3AED}
+\definecolor{opsfill}{HTML}{F5F3FF}
+\definecolor{managedfill}{HTML}{F8FAFC}
+\definecolor{managedstroke}{HTML}{475569}
+\definecolor{runtime}{HTML}{1D4ED8}
+\definecolor{control}{HTML}{C2410C}
+\definecolor{artifact}{HTML}{15803D}
+\definecolor{infra}{HTML}{64748B}
+
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  font=\sffamily\footnotesize,
+  >=Latex,
+  every node/.style={text=ink},
+  box/.style={draw=ink, line width=0.75pt, rounded corners=3pt, align=center, inner sep=5pt, minimum height=0.9cm},
+  client/.style={box, fill=white, draw=managedstroke},
+  edgebox/.style={box, fill=appfill, draw=appstroke},
+  app/.style={box, fill=clusterfill, draw=clusterstroke},
+  mlops/.style={box, fill=opsfill, draw=opsstroke},
+  managed/.style={box, fill=managedfill, draw=managedstroke},
+  runtimeedge/.style={->, line width=1.0pt, draw=runtime},
+  controledge/.style={->, line width=0.9pt, draw=control, dashed},
+  artifactedge/.style={->, line width=0.95pt, draw=artifact},
+  infraedge/.style={->, line width=0.85pt, draw=infra, dashed},
+  label/.style={font=\scriptsize\sffamily, fill=white, inner sep=2pt, align=center}
+]
+
+% User-facing entry path outside and inside the GCP project.
+\node[client, minimum width=2.0cm] (browser) at (1.0,8.9) {Trình duyệt};
+\node[client, minimum width=2.35cm] (pages) at (3.8,8.9) {GitHub Pages\\\scriptsize React static site};
+
+\draw[draw=gcpstroke, line width=1.15pt, rounded corners=7pt]
+  (4.9,0.45) rectangle (20.0,10.65);
+\node[font=\bfseries\large\sffamily, anchor=west] at (5.25,10.2)
+  {Google Cloud project \texttt{grace-enhanced}};
+
+\node[edgebox, minimum width=2.7cm] (proxy) at (6.25,8.9)
+  {Cloud Run Proxy\\\scriptsize HTTPS entrypoint};
+\node[edgebox, minimum width=3.0cm] (gateway) at (9.5,8.9)
+  {GKE Gateway + Cloud Armor\\\scriptsize protected API edge};
+
+% One unified GKE boundary with two namespace groups inside.
+\draw[draw=clusterstroke, line width=1.15pt, rounded corners=6pt, fill=clusterfill]
+  (5.35,3.05) rectangle (13.1,7.85);
+\node[font=\bfseries\small\sffamily, anchor=west, text=clusterstroke]
+  at (5.65,7.48) {GKE Autopilot Cluster};
+
+\draw[draw=appstroke, line width=0.85pt, rounded corners=4pt]
+  (5.65,3.55) rectangle (9.0,7.05);
+\node[font=\bfseries\scriptsize\sffamily, anchor=west, text=appstroke]
+  at (5.9,6.75) {namespace \texttt{philobiblus}};
+\node[app, minimum width=2.35cm] (backend) at (7.3,5.8) {Backend};
+\node[app, minimum width=2.35cm] (recommendation) at (7.3,4.5) {Recommendation};
+\node[app, minimum width=2.0cm] (redis) at (7.3,3.9) {Redis};
+
+\draw[draw=opsstroke, line width=0.85pt, rounded corners=4pt]
+  (9.35,3.55) rectangle (12.8,7.05);
+\node[font=\bfseries\scriptsize\sffamily, anchor=west, text=opsstroke]
+  at (9.6,6.75) {namespace \texttt{philobiblus-mlops}};
+\node[mlops, minimum width=2.35cm] (trainer) at (11.05,5.35) {Retrain CronJob};
+\node[mlops, minimum width=2.15cm] (mlflow) at (11.05,4.15) {MLflow};
+
+% Managed Google Cloud services outside GKE.
+\node[managed, minimum width=2.55cm] (sql) at (16.1,8.55)
+  {Cloud SQL\\\scriptsize PostgreSQL};
+\node[managed, minimum width=2.55cm] (gcs) at (18.65,8.55)
+  {Cloud Storage\\\scriptsize model, snapshot, release};
+\node[managed, minimum width=2.8cm] (registry) at (16.1,6.55)
+  {Artifact Registry\\\scriptsize Docker image};
+\node[managed, minimum width=2.8cm] (secrets) at (18.65,6.55)
+  {Secret Manager\\\scriptsize secrets, identity};
+\node[managed, minimum width=3.0cm] (monitoring) at (17.35,4.15)
+  {Cloud Monitoring\\\scriptsize logs, metrics, alerts};
+
+% Frontend and edge path.
+\draw[runtimeedge] (browser.east) -- (pages.west);
+\draw[runtimeedge] (pages.east) -- (proxy.west);
+\draw[runtimeedge] (proxy.east) -- (gateway.west);
+\draw[runtimeedge] (gateway.south) -- (10.0,7.85);
+
+% Internal cluster path.
+\draw[runtimeedge] (backend.south) -- (recommendation.north);
+\draw[runtimeedge] (backend.south west) -- (redis.north west);
+\node[label] at (6.45,5.0) {cache};
+\node[label] at (7.8,5.15) {gợi ý};
+
+% Cloud SQL and managed service relationships.
+\draw[controledge] (backend.east) -- (13.55,5.8) -- (15.0,8.25);
+\node[label] at (14.15,7.25) {dữ liệu nghiệp vụ};
+\draw[artifactedge] (trainer.east) -- (14.0,5.35) -- (17.55,8.25);
+\node[label] at (15.4,7.1) {model / release};
+\draw[artifactedge] (registry.west) -- (13.55,6.55) -- (12.8,6.55);
+\draw[infraedge] (secrets.west) -- (13.55,6.55) -- (12.8,6.1);
+\draw[controledge] (trainer.east) -- (14.0,4.15) -- (15.85,4.15);
+\node[label] at (14.25,4.5) {logs / metrics};
+
+% Legend.
+\node[anchor=west, font=\scriptsize\sffamily] at (5.6,1.0)
+  {\textcolor{runtime}{\rule[0.65ex]{0.65cm}{1pt}} runtime};
+\node[anchor=west, font=\scriptsize\sffamily] at (9.3,1.0)
+  {\textcolor{control}{\rule[0.65ex]{0.65cm}{1pt}} control};
+\node[anchor=west, font=\scriptsize\sffamily] at (12.8,1.0)
+  {\textcolor{artifact}{\rule[0.65ex]{0.65cm}{1pt}} artifact/model};
+\node[anchor=west, font=\scriptsize\sffamily] at (17.0,1.0)
+  {\textcolor{infra}{\rule[0.65ex]{0.65cm}{1pt}} infrastructure};
+
+\end{tikzpicture}
+\end{document}

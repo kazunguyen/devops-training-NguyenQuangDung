@@ -18,8 +18,14 @@
 \definecolor{coverbg}{HTML}{FFFFFF}
 \definecolor{coverfg}{HTML}{000000}
 \definecolor{coveraccent}{HTML}{FF4B4B}
+\definecolor{linkblue}{HTML}{168ACB}
 
-\hypersetup{colorlinks=false,hidelinks}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=linkblue,
+  urlcolor=linkblue
+}
 \urlstyle{same}
 \setlength{\parindent}{1cm}
 \setlength{\parskip}{0.35em}
@@ -41,7 +47,6 @@
 \pagenumbering{roman}
 \input{chapters/contents}
 \input{chapters/acknowledgements}
-\input{chapters/figures-list}
 
 \pagenumbering{arabic}
 \setcounter{page}{5}

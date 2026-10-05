@@ -1,0 +1,110 @@
+\documentclass[tikz,border=12pt]{standalone}
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usetikzlibrary{arrows.meta,positioning,calc}
+
+\definecolor{ink}{HTML}{243447}
+\definecolor{clusterstroke}{HTML}{64748B}
+\definecolor{appstroke}{HTML}{2563EB}
+\definecolor{appfill}{HTML}{EFF6FF}
+\definecolor{opsstroke}{HTML}{7C3AED}
+\definecolor{opsfill}{HTML}{F5F3FF}
+\definecolor{runtime}{HTML}{1D4ED8}
+\definecolor{control}{HTML}{C2410C}
+\definecolor{artifact}{HTML}{15803D}
+\definecolor{externalfill}{HTML}{F8FAFC}
+\definecolor{externalstroke}{HTML}{475569}
+
+\begin{document}
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  font=\sffamily\footnotesize,
+  >=Latex,
+  every node/.style={text=ink},
+  box/.style={draw=ink, line width=0.75pt, rounded corners=3pt, align=center, inner sep=5pt, minimum height=0.95cm},
+  app/.style={box, fill=appfill, draw=appstroke},
+  ops/.style={box, fill=opsfill, draw=opsstroke},
+  external/.style={box, fill=externalfill, draw=externalstroke},
+  runtimeedge/.style={->, line width=1.05pt, draw=runtime},
+  controledge/.style={->, line width=0.95pt, draw=control, dashed},
+  artifactedge/.style={->, line width=1.0pt, draw=artifact},
+  edgeLabel/.style={font=\scriptsize\sffamily, fill=white, inner sep=2pt, align=center}
+]
+
+% Cluster boundary and namespace boundaries.
+\draw[draw=clusterstroke, line width=1.15pt, rounded corners=7pt]
+  (0,0.3) rectangle (18,10.8);
+\node[font=\bfseries\large\sffamily, anchor=west] at (0.5,10.35)
+  {GKE Autopilot Cluster};
+
+\draw[draw=appstroke, line width=1.0pt, rounded corners=6pt]
+  (0.35,3.25) rectangle (7.5,9.75);
+\node[font=\bfseries\small\sffamily, anchor=west, text=appstroke]
+  at (0.7,9.35) {namespace \texttt{philobiblus}};
+
+\draw[draw=opsstroke, line width=1.0pt, rounded corners=6pt]
+  (11.0,3.25) rectangle (17.5,9.75);
+\node[font=\bfseries\small\sffamily, anchor=west, text=opsstroke]
+  at (11.3,9.35) {namespace \texttt{philobiblus-mlops}};
+
+% Main application components.
+\node[app, minimum width=2.65cm] (gateway) at (1.95,7.75)
+  {GKE Gateway /\\HTTPRoute\\\scriptsize API entrypoint};
+\node[app, minimum width=2.35cm] (backend) at (5.55,7.75)
+  {Backend\\\scriptsize FastAPI, nghiệp vụ};
+\node[app, minimum width=2.35cm] (redis) at (1.95,5.15)
+  {Redis Cache\\\scriptsize cache, rate limit};
+\node[app, minimum width=3.7cm] (recommendation) at (5.55,5.15)
+  {Recommendation\\Service\\\scriptsize TF--IDF, :8080};
+
+% MLOps components.
+\node[ops, minimum width=2.55cm] (mlflow) at (13.0,7.75)
+  {MLflow\\\scriptsize tracking, registry};
+\node[ops, minimum width=2.7cm] (trainer) at (15.6,5.15)
+  {Retrain CronJob\\\scriptsize train, evaluate, promote};
+
+% Shared resources.
+\node[external, minimum width=3.05cm] (sql) at (3.0,1.55)
+  {Cloud SQL PostgreSQL\\\scriptsize application data};
+\node[external, minimum width=3.5cm] (gcs) at (9.0,1.55)
+  {GCS Artifact Storage\\\scriptsize model, snapshot, release};
+\node[external, minimum width=3.15cm] (monitoring) at (15.0,1.55)
+  {Cloud Monitoring\\\scriptsize logs, metrics, alerts};
+
+% Runtime request paths.
+\draw[runtimeedge] (gateway.east) -- (backend.west);
+\draw[runtimeedge] (backend.south west) -- (4.25,6.65) |- (redis.north)
+  node[pos=0.42, edgeLabel, above] {cache};
+\draw[runtimeedge] (backend.south east) -- (6.25,6.65) |- (recommendation.north)
+  node[pos=0.43, edgeLabel, right] {gợi ý};
+
+% MLOps paths.
+\draw[controledge] (trainer.north) -- (14.45,6.35) -- (13.0,6.35) -- (mlflow.south)
+  node[pos=0.5, edgeLabel, above] {run / metric};
+\draw[controledge] (trainer.west) -- (8.95,5.15) -- (recommendation.east)
+  node[pos=0.5, edgeLabel, above] {validation / promotion};
+
+% Shared data and artifact paths.
+\draw[controledge] (backend.south) -- (5.55,2.75) -- (sql.north)
+  node[pos=0.5, edgeLabel, right] {dữ liệu ứng dụng};
+\draw[controledge] (trainer.south west) -- (14.2,2.75) -- (sql.north east)
+  node[pos=0.52, edgeLabel, right] {snapshot huấn luyện};
+\draw[artifactedge] (trainer.south) -- (12.3,2.75) -- (gcs.north east)
+  node[pos=0.5, edgeLabel, above] {model / release};
+\draw[artifactedge] (gcs.north west) -- (7.55,2.75) -- (recommendation.south)
+  node[pos=0.5, edgeLabel, below] {tải model};
+\draw[controledge] (trainer.south east) -- (16.8,2.75) -- (monitoring.north east)
+  node[pos=0.52, edgeLabel, right] {logs / metrics};
+
+% Compact legend.
+\node[anchor=west, font=\scriptsize\sffamily] at (0.7,0.62)
+  {\textcolor{runtime}{\rule[0.5ex]{0.65cm}{1pt}} runtime};
+\node[anchor=west, font=\scriptsize\sffamily] at (5.4,0.62)
+  {\textcolor{control}{\rule[0.5ex]{0.65cm}{1pt}} MLOps control};
+\node[anchor=west, font=\scriptsize\sffamily] at (10.4,0.62)
+  {\textcolor{artifact}{\rule[0.5ex]{0.65cm}{1pt}} artifact/model};
+
+\end{tikzpicture}
+\end{document}
