@@ -129,7 +129,7 @@ Các giá trị mẫu trong chart không chứa secret.
 
 ### 2. Phát hành frontend
 
-Workflow frontend/.github/workflows/deploy-pages.yaml build React/Vite và
+Workflow .github/workflows/deploy-pages.yaml build React/Vite và
 đưa static site lên GitHub Pages. Địa chỉ backend được truyền lúc build qua
 VITE_API_URL; không dùng localhost trong bản phát hành công khai.
 
