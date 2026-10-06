@@ -99,7 +99,9 @@ jobs:
             context: ml
           - name: recommendation
             dockerfile: ml/recommendation-service/Dockerfile
-            context: ml/recommendation-service
+            # This Dockerfile is also used by the release script and copies
+            # repository-root paths, so the build context must remain root.
+            context: .
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t philobiblus-${{ matrix.name }}:sbom -f ${{ matrix.dockerfile }} ${{ matrix.context }}

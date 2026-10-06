@@ -4,7 +4,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -70,7 +71,7 @@ def get_current_user(
         if username is None:
             raise credentials_exception
         token_data = TokenData(username=username)
-    except JWTError:
+    except InvalidTokenError:
         raise credentials_exception
 
     user = db.query(User).filter(User.username == token_data.username).first()
@@ -104,7 +105,7 @@ def get_optional_current_user(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
-    except (JWTError, AttributeError, TypeError):
+    except (InvalidTokenError, AttributeError, TypeError):
         return None
     if not username:
         return None

@@ -225,6 +225,7 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled    = false
       private_network = google_compute_network.main.id
+      require_ssl     = true
     }
 
     maintenance_window {

@@ -32,7 +32,9 @@ jobs:
       - run: python -m compileall -q src model-fetcher recommendation-service/app
       - run: pytest -v recommendation-service/tests tests
         env: { PYTHONPATH: recommendation-service:src }
-      - run: pip install "dvc>=3.0,<4.0" && dvc repro --dry train
+      - name: Validate DVC pipeline from repository root
+        working-directory: .
+        run: pip install "dvc>=3.0,<4.0" && dvc repro --dry train
 
   manifests-and-terraform:
     runs-on: ubuntu-latest
