@@ -15,7 +15,7 @@ local; chúng không đại diện cho môi trường triển khai cuối cùng.
 | GKE | Cluster Autopilot philobiblus-dev-gke tại asia-southeast1. |
 | Namespace philobiblus | Backend FastAPI, recommendation service độc lập, Redis, Gateway/HTTPRoute, ServiceAccount, NetworkPolicy và các ConfigMap phục vụ model release. |
 | Namespace philobiblus-mlops | MLflow Deployment/Service và CronJob philobiblus-retrain cho quy trình retrain, đánh giá và phát hành model. |
-| Cơ sở dữ liệu | Cloud SQL for PostgreSQL; backend và workload MLOps kết nối qua Cloud SQL Auth Proxy. PostgreSQL không chạy trong GKE production. |
+| Cơ sở dữ liệu | Instance Cloud SQL `philobiblus-dev-postgres` chạy PostgreSQL; backend và workload MLOps kết nối qua Cloud SQL Auth Proxy. PostgreSQL không chạy trong GKE production. |
 | Model/artifact | GCS bucket MLOps lưu snapshot, model release và artifact MLflow. Recommendation service chỉ đọc vùng model được cấp quyền. |
 | Cache và giới hạn tải | Redis lưu catalog/rate-limit; recommendation request có load shedding dùng chung để tránh làm nghẽn backend và Cloud SQL. |
 | Observability | Cloud Logging, Cloud Monitoring và Managed Service for Prometheus/GKE PodMonitoring. Không dùng Grafana/Prometheus local trong kiến trúc production. |
