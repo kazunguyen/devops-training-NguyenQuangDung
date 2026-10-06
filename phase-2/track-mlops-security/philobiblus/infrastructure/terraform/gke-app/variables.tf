@@ -66,6 +66,51 @@ variable "frontend_origin" {
   }
 }
 
+variable "recommendations_enabled" {
+  description = "Emergency operator override for backend requests to the optional recommendation service."
+  type        = bool
+  default     = true
+}
+
+variable "recommendation_load_shedding_enabled" {
+  description = "Whether high aggregate recommendation traffic opens a shared circuit."
+  type        = bool
+  default     = true
+}
+
+variable "recommendation_load_shedding_max_requests" {
+  description = "Maximum aggregate recommendation requests allowed during one load-shedding window."
+  type        = number
+  default     = 12
+
+  validation {
+    condition     = var.recommendation_load_shedding_max_requests >= 1
+    error_message = "recommendation_load_shedding_max_requests must be at least one."
+  }
+}
+
+variable "recommendation_load_shedding_window_seconds" {
+  description = "Length of the aggregate recommendation request window in seconds."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.recommendation_load_shedding_window_seconds >= 1
+    error_message = "recommendation_load_shedding_window_seconds must be at least one."
+  }
+}
+
+variable "recommendation_load_shedding_cooldown_seconds" {
+  description = "How long the recommendation circuit remains open after a load-shedding event."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.recommendation_load_shedding_cooldown_seconds >= 1
+    error_message = "recommendation_load_shedding_cooldown_seconds must be at least one."
+  }
+}
+
 variable "gateway_host" {
   type        = string
   description = "Optional DNS hostname for the Gateway. Empty exposes an HTTP IP only."

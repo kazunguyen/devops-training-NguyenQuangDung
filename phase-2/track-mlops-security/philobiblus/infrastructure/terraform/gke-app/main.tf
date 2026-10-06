@@ -182,6 +182,13 @@ resource "helm_release" "philobiblus" {
           trustProxyHeaders = true
           fallbackPodCount  = 6
         }
+        recommendationsEnabled = var.recommendations_enabled
+        recommendationLoadShedding = {
+          enabled         = var.recommendation_load_shedding_enabled
+          maxRequests     = var.recommendation_load_shedding_max_requests
+          windowSeconds   = var.recommendation_load_shedding_window_seconds
+          cooldownSeconds = var.recommendation_load_shedding_cooldown_seconds
+        }
         uploads = {
           imgbbTimeoutSeconds = 15
           maxConcurrency      = 2
@@ -299,7 +306,7 @@ resource "helm_release" "philobiblus" {
         enabled                    = true
         defaultDenyIngress         = true
         defaultDenyEgress          = false
-        managedPrometheusNamespace = "gmp-system"
+        managedPrometheusNamespace = "gke-gmp-system"
       }
       monitoring = {
         serviceMonitor = {
