@@ -1,483 +1,262 @@
 # Philobiblus
 
-Philobiblus là ứng dụng React/Vite, FastAPI và PostgreSQL để quản lý thư viện
-sách cá nhân. Hướng dẫn này tập trung vào môi trường Kubernetes local bằng k3d,
-Helm, Cloudflare Quick Tunnel và stack Prometheus/Grafana.
+Philobiblus là ứng dụng quản lý tiến độ đọc, chia sẻ sách và đề xuất sách.
+Phiên bản được mô tả trong tài liệu này là phiên bản đang được triển khai trên
+Google Cloud, với workload chạy trong GKE Autopilot. Các cấu hình Docker Compose,
+k3d và Prometheus/Grafana trong repository chỉ phục vụ phát triển hoặc kiểm thử
+local; chúng không đại diện cho môi trường triển khai cuối cùng.
 
-## Kiến trúc triển khai
+## Trạng thái triển khai cuối cùng
 
-```text
-Browser local ──► Traefik Ingress ──► Frontend Service ──► React/Vite pod
-                         │
-                         └── /api ──► Backend Service ───► FastAPI pod
-                                                        │
-                                                        └──► PostgreSQL PVC
-
-Prometheus ──► ServiceMonitor ──► Backend Service:/metrics
-Grafana ────► Prometheus
-GitHub Pages ──► Cloudflare Quick Tunnel ──► Backend Service  # demo tạm thời
-```
-
-| Thành phần | Cách triển khai hiện tại |
+| Thành phần | Trạng thái và vai trò |
 |---|---|
-| Frontend, backend, PostgreSQL, PVC, Service, Ingress, seed Job | Helm chart `kubernetes/helm/philobiblus` |
-| Ingress controller | Traefik mặc định của k3d/k3s |
-| Monitoring | `kube-prometheus-stack` và `ServiceMonitor` của Helm chart |
-| NGINX | Chỉ có trong Docker Compose tại `nginx/nginx.conf`; chart Helm hiện **không** có NGINX Deployment/Service |
+| Frontend | React/Vite được build và phát hành trên GitHub Pages. Frontend không chạy thành Pod trong GKE. |
+| Cloud Run proxy | Service philobiblus-dev-proxy làm HTTPS entrypoint/proxy công khai tới Gateway của GKE. |
+| GKE | Cluster Autopilot philobiblus-dev-gke tại asia-southeast1. |
+| Namespace philobiblus | Backend FastAPI, recommendation service độc lập, Redis, Gateway/HTTPRoute, ServiceAccount, NetworkPolicy và các ConfigMap phục vụ model release. |
+| Namespace philobiblus-mlops | MLflow Deployment/Service và CronJob philobiblus-retrain cho quy trình retrain, đánh giá và phát hành model. |
+| Cơ sở dữ liệu | Cloud SQL for PostgreSQL; backend và workload MLOps kết nối qua Cloud SQL Auth Proxy. PostgreSQL không chạy trong GKE production. |
+| Model/artifact | GCS bucket MLOps lưu snapshot, model release và artifact MLflow. Recommendation service chỉ đọc vùng model được cấp quyền. |
+| Cache và giới hạn tải | Redis lưu catalog/rate-limit; recommendation request có load shedding dùng chung để tránh làm nghẽn backend và Cloud SQL. |
+| Observability | Cloud Logging, Cloud Monitoring và Managed Service for Prometheus/GKE PodMonitoring. Không dùng Grafana/Prometheus local trong kiến trúc production. |
+| Secret và quyền | Secret Manager + GKE Secret Manager add-on/CSI, Workload Identity và ServiceAccount tách theo workload. |
 
-## Bản đồ artefact triển khai
+Frontend người dùng truy cập tại:
+https://kazunguyen.github.io/philobiblus/
 
-| Hướng triển khai | Cấu hình chính | Script và tài liệu |
-|---|---|---|
-| Docker Compose local | `docker-compose.yaml`, `nginx/` | Cấu hình chạy local của ứng dụng |
-| Kubernetes raw manifests | `kubernetes/manifests/` | `kubernetes/manifests/README.md` |
-| Kubernetes local bằng Helm | `kubernetes/helm/philobiblus/`, `monitoring/` | `scripts/local-kubernetes/` |
-| GCP dùng chung | `infrastructure/terraform/bootstrap/`, `infrastructure/terraform/foundation/` | `scripts/gcp-shared/` |
-| GCP Cloud Run | `infrastructure/terraform/runtime/` | `scripts/gcp-cloud-run/`, `docs/deployments/gcp-cloud-run/` |
-| GCP GKE + Helm | `infrastructure/terraform/gke-*`, `infrastructure/terraform/https-proxy/` | `scripts/gcp-gke/`, `docs/deployments/gcp-gke/` |
+Mã nguồn nằm tại repository GitHub của dự án:
+https://github.com/kazunguyen/philobiblus
 
-Traefik Ingress thay vai trò route `/` và `/api` trong môi trường Kubernetes.
-Không áp dụng riêng các YAML trong `kubernetes/helm/philobiblus/templates/` bằng
-`kubectl apply`: Helm render và quản lý các resource này.
+## Kiến trúc request và dữ liệu
 
-## 1. Triển khai Philobiblus lên k3d bằng Helm
+~~~text
+Browser
+  │
+  └── GitHub Pages (React/Vite)
+        │ gọi API
+        ▼
+Cloud Run proxy (philobiblus-dev-proxy)
+        │
+        ▼
+GKE Gateway + Cloud Armor
+        │
+        └── namespace philobiblus
+              ├── Backend Deployment (2 replica, HPA 2–6)
+              │     ├── Cloud SQL PostgreSQL qua Auth Proxy
+              │     ├── Redis cache/rate-limit
+              │     └── Recommendation Deployment (1 replica)
+              │
+              └── namespace philobiblus-mlops
+                    ├── MLflow Deployment (1 replica)
+                    └── philobiblus-retrain CronJob
 
-### 1.1. Yêu cầu
+GCS MLOps bucket ──► model-fetcher/initContainer ──► Recommendation Pod
+CronJob ──► MLflow (run/metric/model version)
+CronJob ──► GCS (snapshot/model release)
+Workloads ──► Cloud Logging/Monitoring/Managed Prometheus
+~~~
 
-Máy triển khai cần Docker, k3d, `kubectl` và Helm. Toàn bộ lệnh dưới đây chạy
-từ thư mục gốc của dự án `philobiblus`.
+Luồng request người dùng chỉ đi qua namespace philobiblus. Namespace
+philobiblus-mlops không nằm trên đường phục vụ request; nó tạo và quản lý model
+được recommendation service sử dụng.
 
-### 1.2. Tạo cụm Kubernetes
+## Cấu trúc mã nguồn chính
 
-```bash
-k3d cluster create philobiblus \
-  --agents 1 \
-  --port "80:80@loadbalancer"
+~~~text
+backend/                         FastAPI, SQLAlchemy, JWT, Redis và API nghiệp vụ
+frontend/                        React/Vite và các trang giao diện
+ml/recommendation-service/       API recommendation và TF-IDF recommender
+ml/training/                     pipeline snapshot, train, evaluate, promote
+ml/model-fetcher/                tải model release từ GCS
+ml/mlflow/                       image MLflow server
+kubernetes/helm/philobiblus/    Helm chart workload ứng dụng
+kubernetes/helm/philobiblus-mlops/
+                                  Helm chart MLflow và retrain CronJob
+infrastructure/terraform/        Terraform cho nền tảng GKE, app và MLOps
+proxy/                            image cấu hình Cloud Run proxy
+monitoring/                       cấu hình phục vụ môi trường local, không phải GKE production
+docs/                             báo cáo, runbook và bằng chứng triển khai
+screenshots/                      ảnh minh chứng giao diện và Google Cloud Console
+~~~
 
-kubectl config use-context k3d-philobiblus
-kubectl get nodes
-```
+## Các workload Kubernetes trên GKE
 
-Kết quả mong đợi: server và agent có trạng thái `Ready`. k3d cài Traefik làm
-Ingress controller mặc định.
+### Namespace philobiblus
 
-### 1.3. Build và import image vào k3d
+- **Backend Deployment/Service**: xử lý xác thực, sách, tiến độ đọc, chia sẻ,
+  bình luận và gọi recommendation service khi cần.
+- **Recommendation Deployment/Service**: chạy FastAPI và model TF-IDF độc lập;
+  model-fetcher tải model release đã được phát hành từ GCS.
+- **Redis Deployment/Service**: cache catalog trong thời gian ngắn và lưu state
+  cho rate limit/load shedding. Backend có đường lui khi Redis tạm thời lỗi.
+- **Gateway và HTTPRoute**: nhận traffic từ proxy, sau đó chuyển vào Service
+  backend; frontend được phát hành riêng nên chart production không bật frontend
+  Deployment.
+- **SecretProviderClass/ServiceAccount/NetworkPolicy/ConfigMap**: cấp secret từ
+  Secret Manager, giới hạn quyền Pod và lưu model release hiện hành.
 
-Helm values local dùng hai image tag `local`; cần build và import chúng trước
-khi cài chart.
+Backend production được cấu hình pool cơ sở dữ liệu nhỏ, timeout hữu hạn, cache
+catalog 30 giây và giới hạn recommendation theo cửa sổ 10 giây. Khi recommendation
+service quá tải hoặc bị tắt bằng biến vận hành, API trả trạng thái unavailable
+thay vì làm hỏng toàn bộ trang sách.
 
-```bash
-docker build --tag philobiblus-backend:local ./backend
-docker build --tag philobiblus-frontend:local ./frontend
+### Namespace philobiblus-mlops
 
-k3d image import --cluster philobiblus \
-  philobiblus-backend:local \
-  philobiblus-frontend:local
-```
+- **MLflow Deployment/Service**: nhận run, parameter, metric, artifact và model
+  version; metadata nằm trong schema MLflow của Cloud SQL, artifact nằm trên GCS.
+- **philobiblus-retrain CronJob**: lấy snapshot catalog, huấn luyện, đánh giá,
+  ghi run vào MLflow và chỉ phát hành model khi quality gate hợp lệ.
+- **Trainer ServiceAccount, Role và RoleBinding**: chỉ cho trainer đọc/patch
+  Deployment recommendation và ConfigMap model-release trong phạm vi cần thiết.
+- **SecretProviderClass và Cloud SQL Auth Proxy**: cung cấp database URI mà
+  không đưa credential vào Helm values hoặc image.
 
-### 1.4. Tạo values local và secret
+CronJob dùng lịch 0 20 * * * (03:00 ngày hôm sau theo giờ Việt Nam) khi được
+bật. Job sinh thủ công có hậu tố manual; chúng là lần chạy kiểm tra riêng,
+không phải một CronJob khác.
 
-`values.local.yaml` chứa password PostgreSQL, JWT secret và ImgBB API key;
-tệp này đã được Git ignore. Sao chép mẫu rồi thay toàn bộ giá trị
-`REPLACE_WITH_...` bằng giá trị local thực tế.
+## Quy trình build và triển khai
 
-```bash
-cp kubernetes/helm/philobiblus/values.local.example.yaml \
-  kubernetes/helm/philobiblus/values.local.yaml
-```
+### 1. Build image
 
-Để truy cập từ GitHub Pages, `backend.allowedOrigins` trong values local phải
-gồm origin Pages, không kèm path. Ví dụ:
+Backend, recommendation service, model-fetcher, trainer, MLflow và proxy đều
+được đóng gói bằng Docker. Image production nên được tham chiếu bằng digest
+SHA-256 thay vì tag thay đổi.
 
-```yaml
-backend:
-  allowedOrigins: http://localhost,https://kazunguyen.github.io
-```
+Workflow MLOps build image trainer/model-fetcher/MLflow, đẩy image vào Artifact
+Registry, ký image bằng Cosign/OIDC rồi truyền digest bất biến vào Helm release.
+Các giá trị mẫu trong chart không chứa secret.
 
-### 1.5. Render, cài Helm release và kiểm tra workload
+### 2. Phát hành frontend
 
-```bash
-helm lint kubernetes/helm/philobiblus \
-  --values kubernetes/helm/philobiblus/values.local.yaml
+Workflow frontend/.github/workflows/deploy-pages.yaml build React/Vite và
+đưa static site lên GitHub Pages. Địa chỉ backend được truyền lúc build qua
+VITE_API_URL; không dùng localhost trong bản phát hành công khai.
 
-helm template philobiblus kubernetes/helm/philobiblus \
-  --namespace philobiblus \
-  --values kubernetes/helm/philobiblus/values.local.yaml \
-  > rendered.yaml
+### 3. Provision hạ tầng bằng Terraform
 
-helm upgrade --install philobiblus kubernetes/helm/philobiblus \
+Các module chính nằm dưới infrastructure/terraform/:
+
+- **gke-platform**: cluster Autopilot, Gateway address, Certificate Manager và
+  các thành phần nền tảng;
+- **gke-app**: namespace ứng dụng, quota/limit range, Workload Identity, Helm
+  release backend/recommendation/Redis và liên kết Cloud SQL;
+- **gke-mlops**: GCS bucket MLOps, ServiceAccount, IAM theo prefix, Secret Manager
+  access và quyền cho MLflow/trainer;
+- **https-proxy**: tài nguyên proxy công khai nếu cần quản lý bằng Terraform.
+
+Terraform state được lưu trong GCS backend. Các giá trị thật như project ID,
+state bucket, database URI, secret ID và image digest phải được truyền qua biến
+môi trường hoặc protected GitHub Environment; không commit file *.tfvars
+chứa credential.
+
+### 4. Deploy Helm
+
+Chart ứng dụng:
+
+~~~bash
+helm upgrade --install philobiblus \
+  kubernetes/helm/philobiblus \
   --namespace philobiblus \
   --create-namespace \
-  --values kubernetes/helm/philobiblus/values.local.yaml \
-  --wait \
-  --wait-for-jobs \
-  --timeout 10m
+  --wait --wait-for-jobs --timeout 20m
+~~~
 
-kubectl get deployment,pod,service,ingress,pvc -n philobiblus
-kubectl rollout status deployment/philobiblus-postgres -n philobiblus
-kubectl rollout status deployment/philobiblus-backend -n philobiblus
-kubectl rollout status deployment/philobiblus-frontend -n philobiblus
-helm test philobiblus -n philobiblus
-```
+Chart MLOps:
 
-Chart triển khai frontend, backend, PostgreSQL + PVC, Service, Traefik Ingress
-và seed hook Job. Seed Job chạy sau install/upgrade và migration có tính
-idempotent.
-
-```bash
-kubectl get jobs -n philobiblus
-kubectl logs job/philobiblus-seed -n philobiblus
-
-curl -I -H 'Host: localhost' http://127.0.0.1/
-curl -s -H 'Host: localhost' http://127.0.0.1/api/health
-```
-
-Nếu cần upgrade nhưng không muốn seed lại dữ liệu mẫu:
-
-```bash
-helm upgrade philobiblus kubernetes/helm/philobiblus \
-  --namespace philobiblus \
-  --values kubernetes/helm/philobiblus/values.local.yaml \
-  --set seed.enabled=false
-```
-
-## 2. Expose backend qua Cloudflare Quick Tunnel và GitHub Pages
-
-Quick Tunnel phù hợp demo ngắn hạn: URL thay đổi sau mỗi lần chạy và dừng khi
-terminal hoặc máy local dừng. Không coi đây là kiến trúc production.
-
-### 2.1. Mở tunnel từ cluster đến Internet
-
-Script kiểm tra Service backend và CORS trước khi tạo pod `cloudflared` tạm
-thời. Giữ terminal này mở để tunnel tiếp tục hoạt động.
-
-```bash
-PAGES_ORIGIN=https://kazunguyen.github.io bash scripts/local-kubernetes/expose-backend.sh
-```
-
-Lấy URL `https://<random>.trycloudflare.com` xuất hiện trong log. Backend đã
-có prefix `/api`, nên giá trị build-time cho frontend phải là:
-
-```text
-https://<random>.trycloudflare.com/api
-```
-
-Quick Tunnel hiện chuyển tiếp toàn bộ backend route, gồm cả `/metrics`. Chỉ
-dùng trong demo, không chia sẻ URL khi không cần thiết và dừng bằng `Ctrl+C`
-khi hoàn tất.
-
-### 2.2. Đặt `VITE_API_URL` cho GitHub Pages
-
-Cài GitHub CLI, đăng nhập một lần, rồi đặt repository variable và kích hoạt
-lại workflow Pages:
-
-```bash
-gh auth login
-
-gh variable set VITE_API_URL \
-  --repo KwangZung/devops-training-NguyenQuangDung \
-  --body 'https://<random>.trycloudflare.com/api'
-
-gh workflow run deploy-pages.yaml \
-  --repo KwangZung/devops-training-NguyenQuangDung
-```
-
-`VITE_API_URL` được GitHub Actions truyền vào lúc build frontend. Không đặt URL
-`localhost` cho GitHub Pages vì trình duyệt của người dùng không thể truy cập
-cluster local qua `localhost`.
-
-## 3. Observability với Prometheus và Grafana
-
-Backend expose `/metrics` qua ClusterIP Service. Route này không đi qua
-Ingress. `ServiceMonitor` của chart chỉ được tạo sau khi Prometheus Operator
-CRD đã có trong cluster.
-
-### 3.1. Cài stack và bật ServiceMonitor
-
-Script dưới đây cài/nâng cấp `kube-prometheus-stack`, bật ServiceMonitor cho
-release Philobiblus, đợi backend target `UP`, rồi tự đóng port-forward tạm.
-
-```bash
-bash scripts/local-kubernetes/setup-monitoring.sh
-```
-
-Phiên bản thủ công tương đương dùng values không chứa secret:
-
-```bash
-helm repo add prometheus-community \
-  https://prometheus-community.github.io/helm-charts
-helm repo update prometheus-community
-
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
+~~~bash
+helm upgrade --install philobiblus-mlops \
+  kubernetes/helm/philobiblus-mlops \
+  --namespace philobiblus-mlops \
   --create-namespace \
-  --values monitoring/prometheus-values.yaml \
-  --wait \
-  --timeout 10m
+  --wait --timeout 10m
+~~~
 
-helm upgrade philobiblus kubernetes/helm/philobiblus \
-  --namespace philobiblus \
-  --values kubernetes/helm/philobiblus/values.local.yaml \
-  --set monitoring.serviceMonitor.enabled=true \
-  --wait \
-  --wait-for-jobs \
-  --timeout 10m
-```
+Trong triển khai thật, các lệnh trên được workflow gọi với project, Cloud SQL
+connection name, secret ID, bucket và image digest từ protected variables.
+Không dùng lệnh trên với values local để thay thế release GKE production.
 
-`monitoring/prometheus-values.yaml` đặt
-`serviceMonitorSelectorNilUsesHelmValues: false` để Prometheus local nhận
-ServiceMonitor của namespace `philobiblus`.
+## Kiểm tra trạng thái GKE
 
-Kiểm tra target Prometheus bằng port-forward local:
+~~~bash
+gcloud container clusters get-credentials philobiblus-dev-gke \
+  --region asia-southeast1
 
-```bash
-kubectl port-forward -n monitoring \
-  svc/monitoring-kube-prometheus-prometheus 9090:9090
-```
+kubectl get deployments,pods,services -n philobiblus
+kubectl get deployments,pods,services,cronjobs -n philobiblus-mlops
+kubectl get gateway,httproute -n philobiblus
+~~~
 
-Mở `http://127.0.0.1:9090/targets`; target backend phải `UP`.
+Các trạng thái cần kiểm tra sau triển khai:
 
-### 3.2. Truy cập monitoring local và import Grafana dashboard
+- backend đạt số replica tối thiểu và HPA có metric CPU;
+- recommendation Deployment có Pod Ready;
+- Redis và MLflow có readiness probe thành công;
+- Cloud SQL Auth Proxy sidecar kết nối được database;
+- CronJob không có Job thất bại tồn đọng ngoài giới hạn lịch sử;
+- Gateway/HTTPRoute có địa chỉ và proxy trả health 200;
+- PodMonitoring xuất hiện trong Cloud Monitoring.
 
-Mở Grafana và Prometheus bằng một script duy nhất. Script tự đọc Service port
-hiện có, kiểm tra health endpoint, in URL local và giữ hai port-forward chạy
-cho đến khi nhấn `Ctrl+C`:
+Xem log mà không in secret:
 
-```bash
-bash scripts/local-kubernetes/expose-monitoring.sh
-```
+~~~bash
+kubectl logs -n philobiblus deployment/philobiblus-backend --tail=200
+kubectl logs -n philobiblus deployment/philobiblus-recommendation --tail=200
+kubectl logs -n philobiblus-mlops deployment/mlflow --tail=200
+kubectl get jobs -n philobiblus-mlops
+~~~
 
-URL mặc định là `http://127.0.0.1:3000` cho Grafana và
-`http://127.0.0.1:9090` cho Prometheus. Override local port khi bị trùng:
+## Observability trên Google Cloud
 
-```bash
-GRAFANA_LOCAL_PORT=3300 PROMETHEUS_LOCAL_PORT=9191 \
-  bash scripts/local-kubernetes/expose-monitoring.sh
-```
+GKE production dùng Cloud Logging, Cloud Monitoring và Managed Service for
+Prometheus. Metric ứng dụng được khai báo bằng PodMonitoring; log, CPU, memory,
+restart, Gateway và Cloud SQL được xem từ Google Cloud Console. Các dashboard
+Prometheus/Grafana trong thư mục monitoring/ chỉ dành cho môi trường local và
+không nên được dùng làm bằng chứng cho cluster GKE.
 
-Trang **System health** chỉ liên kết Grafana. Với frontend chạy local, build
-frontend cùng URL Grafana mà script in ra; không cấu hình URL Prometheus cho
-trình duyệt.
+Khi điều tra lỗi 5xx hoặc recommendation unavailable, xem theo thứ tự:
 
-Lấy mật khẩu admin trước khi đăng nhập Grafana:
+1. Cloud Run proxy và Gateway/Cloud Armor;
+2. log backend và trạng thái HPA;
+3. Redis và recommendation Deployment;
+4. Cloud SQL connection/CPU/connection count;
+5. MLflow, CronJob, GCS model release và model version.
 
-```bash
-kubectl get secret -n monitoring monitoring-grafana \
-  -o jsonpath='{.data.admin-password}' | base64 --decode
-printf '\n'
-```
+## Bảo mật và vận hành
 
-Mở `http://127.0.0.1:3000` và đăng nhập với username `admin`. Datasource
-Prometheus do `kube-prometheus-stack` provision. Nếu datasource chưa đúng,
-đặt Access là `Server` và URL là:
+- Secret được lưu ở Secret Manager, không đặt trong source, image hoặc GitHub
+  workflow log.
+- Workload Identity cấp quyền GCP riêng cho backend, recommendation, seed,
+  trainer và MLflow.
+- NetworkPolicy giới hạn traffic giữa namespace ứng dụng, MLOps và hệ thống
+  Managed Prometheus.
+- Container chạy non-root, hạn chế capability, dùng filesystem read-only ở các
+  workload phù hợp và có readiness/liveness/startup probe.
+- Image production được pin bằng digest; pipeline MLOps ký image trước khi
+  deploy.
+- Cloud Armor được quản lý ở lớp Gateway; khi rule ở preview cần xem log và
+  false positive trước khi chuyển sang enforce.
 
-```text
-http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
-```
+## Kiểm thử
 
-Không đặt `http://127.0.0.1:9090` trong datasource Grafana: địa chỉ đó là
-loopback của pod Grafana, không phải Prometheus.
+Kiểm thử mã nguồn được thực hiện riêng cho backend, recommendation/ML và
+frontend build. Helm lint/template kiểm tra manifest trước triển khai; GKE
+Console và kubectl kiểm tra rollout, Pod readiness, CronJob và resource cloud.
+Load test phải được đọc cùng điều kiện đo: mốc 150 người dùng đồng thời trước
+đây được đo khi recommendation service tắt, nên không đại diện cho toàn bộ luồng
+production khi recommendation hoạt động. Khi demo, ưu tiên theo dõi Cloud
+Monitoring và giữ ngưỡng load shedding để bảo vệ Cloud SQL.
 
-`monitoring/grafana-dashboard.json` là Grafana Dashboard JSON v2 và có thể
-import trực tiếp. Trong Grafana, chọn **Dashboards → New → Import**, upload
-tệp JSON, map datasource `prometheus` tới datasource Prometheus đang có, rồi
-chọn **Import**. Grafana hỗ trợ import dashboard JSON từ file hoặc nội dung
-paste qua UI. [Tài liệu import dashboard của Grafana](https://grafana.com/docs/grafana/latest/visualizations/dashboards/build-dashboards/import-dashboards/)
-ghi nhận luồng này.
+## Phân biệt môi trường
 
-Dashboard có các panel: số target backend khỏe, request rate, lỗi 4xx/5xx,
-p95 latency, restart pod, CPU, memory và mức sử dụng PVC. Nếu không thấy dữ
-liệu, kiểm tra lại query sau trong Grafana Explore:
+Các thư mục sau vẫn được giữ để phục vụ học tập và phát triển, nhưng không phải
+trạng thái production được mô tả ở trên:
 
-```promql
-up{namespace="philobiblus",service="philobiblus-backend"}
-```
+- docker-compose.yaml, nginx/: chạy toàn bộ stack local;
+- kubernetes/manifests/: manifest Kubernetes nguyên bản;
+- scripts/local-kubernetes/: k3d/k3s và Prometheus/Grafana local;
+- monitoring/: values/dashboard cho stack monitoring local.
 
-### 3.3. Scale backend bằng HorizontalPodAutoscaler
-
-HPA chỉ áp dụng cho FastAPI backend vì workload này stateless và Service có
-thể phân phối request giữa các pod. PostgreSQL không được scale bằng HPA: nhiều
-pod PostgreSQL dùng cùng một PVC không tạo thành cụm database an toàn.
-
-Chart khai báo HPA tại `templates/backend-hpa.yaml`. Cấu hình backend giữ tối
-thiểu ba replica và tăng tối đa sáu replica khi CPU trung bình vượt 70% CPU
-request:
-
-```yaml
-backend:
-  replicaCount: 3
-  autoscaling:
-    enabled: true
-    minReplicas: 3
-    maxReplicas: 6
-    targetCPUUtilizationPercentage: 70
-```
-
-Metrics Server phải hoạt động và backend phải có CPU request. Áp dụng thay đổi
-cho release đã tồn tại bằng lệnh sau. Tham số CPU target được truyền tường minh
-để tránh thiếu giá trị khi tái sử dụng values của release cũ.
-
-```bash
-helm upgrade philobiblus kubernetes/helm/philobiblus \
-  --namespace philobiblus \
-  --reuse-values \
-  --set backend.replicaCount=3 \
-  --set backend.autoscaling.enabled=true \
-  --set backend.autoscaling.minReplicas=3 \
-  --set backend.autoscaling.maxReplicas=6 \
-  --set backend.autoscaling.targetCPUUtilizationPercentage=70 \
-  --atomic \
-  --timeout 5m
-```
-
-Xác minh HPA:
-
-```bash
-kubectl get hpa philobiblus-backend-hpa -n philobiblus
-kubectl describe hpa philobiblus-backend-hpa -n philobiblus
-```
-
-Kết quả cần có `MINPODS` là `3`, `MAXPODS` là `6`, `ScalingActive=True` và
-CPU target dạng `cpu: <current>%/70%`.
-
-### 3.4. Tạo tải kiểm chứng HPA
-
-Chỉ chạy trên cluster local khi không có người dùng demo. Terminal thứ nhất
-theo dõi số replica và CPU target:
-
-```bash
-kubectl get hpa philobiblus-backend-hpa -n philobiblus --watch
-```
-
-Terminal thứ hai chạy 50 worker trong tối đa 5 phút tới ClusterIP Service;
-load-generator tự xóa khi hoàn tất. Có thể dừng sớm bằng `Ctrl+C`.
-
-```bash
-kubectl run backend-hpa-load \
-  --namespace philobiblus \
-  --rm -i --restart=Never \
-  --image=curlimages/curl:8.10.1 \
-  --command -- sh -c '
-    deadline=$(( $(date +%s) + 300 ))
-    for worker in $(seq 1 50); do
-      (
-        while [ "$(date +%s)" -lt "$deadline" ]; do
-          curl --fail --silent --max-time 2 \
-            http://philobiblus-backend:8000/health >/dev/null || true
-        done
-      ) &
-    done
-    wait
-  '
-```
-
-Nếu CPU chưa đạt 70%, tăng số worker từ `50` lên `80`, không tăng đồng thời
-thời lượng. HPA cần khoảng một đến vài chu kỳ thu thập metric để scale lên;
-sau khi tải dừng, chính sách hiện tại giữ replica cao hơn trong 5 phút trước
-khi giảm dần về tối thiểu 3 replica.
-
-## 4. Phụ lục: kiểm tra pod, database và log
-
-### 4.1. Truy cập PostgreSQL trong pod
-
-Lệnh dưới dùng biến môi trường của container PostgreSQL; không cần in password
-ra terminal.
-
-```bash
-kubectl exec -it -n philobiblus deployment/philobiblus-postgres \
-  -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-```
-
-Trong `psql`:
-
-```sql
-\dt
-SELECT id, username, email FROM users;
-SELECT id, title, author, status FROM books;
-\q
-```
-
-### 4.2. Xem log workload
-
-```bash
-kubectl logs -n philobiblus deployment/philobiblus-backend --tail=200 -f
-kubectl logs -n philobiblus deployment/philobiblus-frontend --tail=200 -f
-kubectl logs -n philobiblus deployment/philobiblus-postgres --tail=200 -f
-kubectl logs -n philobiblus job/philobiblus-seed --tail=200
-
-kubectl get pods -n philobiblus
-kubectl logs -n philobiblus <pod-name> -c <container-name> --previous
-```
-
-`--previous` hiển thị log container trước lần restart gần nhất.
-
-### 4.3. Tạo traffic kiểm thử backend
-
-Chỉ chạy load test trên cluster local và khi không có người dùng demo. Không
-chạy qua URL Quick Tunnel công khai.
-
-Traffic vừa: 10 worker, mỗi worker 50 request tới health endpoint.
-
-```bash
-kubectl run backend-load-light \
-  --namespace philobiblus \
-  --rm --restart=Never \
-  --image=curlimages/curl:8.10.1 \
-  --command -- sh -c '
-    for worker in $(seq 1 10); do
-      (
-        for request in $(seq 1 50); do
-          curl --fail --silent http://philobiblus-backend:8000/health >/dev/null || true
-        done
-      ) &
-    done
-    wait
-  '
-```
-
-Traffic nặng nhưng có giới hạn: 50 worker, mỗi worker 400 request. Lệnh này
-có thể làm tăng latency hoặc error rate tùy tài nguyên máy, nhưng HTTP load
-không thể bảo đảm làm backend crash trên mọi môi trường.
-
-```bash
-kubectl run backend-load-heavy \
-  --namespace philobiblus \
-  --rm --restart=Never \
-  --image=curlimages/curl:8.10.1 \
-  --command -- sh -c '
-    for worker in $(seq 1 50); do
-      (
-        for request in $(seq 1 400); do
-          curl --fail --silent http://philobiblus-backend:8000/health >/dev/null || true
-        done
-      ) &
-    done
-    wait
-  '
-```
-
-Để kiểm thử **chắc chắn** Kubernetes tự restart container mà không tác động
-PostgreSQL/PVC, dùng controlled failure injection thay vì cố làm cạn tài
-nguyên. Lệnh này gây gián đoạn ngắn cho backend một-replica:
-
-```bash
-BACKEND_POD="$(kubectl get pod -n philobiblus \
-  -l app.kubernetes.io/component=backend \
-  -o jsonpath='{.items[0].metadata.name}')"
-
-kubectl exec -n philobiblus "${BACKEND_POD}" -c backend -- kill -TERM 1
-
-kubectl rollout status deployment/philobiblus-backend -n philobiblus --timeout=60s
-kubectl get pod -n philobiblus -l app.kubernetes.io/component=backend
-```
-
-Grafana sẽ hiển thị restart qua query:
-
-```promql
-sum by (pod) (
-  kube_pod_container_status_restarts_total{
-    namespace="philobiblus",
-    container="backend"
-  }
-)
-```
+Khi cập nhật hệ thống, hãy cập nhật đồng thời Terraform, Helm values, workflow
+triển khai và tài liệu bằng chứng để README không mô tả nhầm một môi trường
+khác với cluster GKE đang vận hành.

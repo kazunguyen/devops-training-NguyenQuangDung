@@ -1,0 +1,10 @@
+Phần IIIb) Quá trình phát triển hệ thống đang viết quá lộn xộn và hỗn loạn, chưa thể hiện rõ được cái trình tự và cái trọng tâm. Cái quá trình mà t muốn viết là
+1. Viết mã nguồn hệ thống và tạo image (Sơ qua, không phải trọng tâm): FE, BE, database, thiết kế mô hình học máy
+2. Frontend thì deploy lên Github Pages
+3. Thiết kế Helm chart để chuẩn bị deploy những thành phần còn lại (BE, database, ...) lên cụm k8s. Đến đoạn này ta sẽ trình bày xem trong cụm k8s của ta sẽ có những object nào. Nêu rõ ra, nhưng cũng vừa phải thôi
+4. Deploy lên cụm k8s trên google cloud, ta sử dụng những resources nào của google cloud. Nêu rõ ra, nhưng cũng vừa phải thôi
+
+Yêu cầu:
+1. Đọc lại code, đối chiếu lại trạng thái hiện tại của hệ thống để lấy thông tin chính xác nhất nhằm viết báo cáo
+2. Phần kiến trúc của cụm k8s hay gcloud thì vẽ biểu đồ, còn giao diện hay minh chứng thì có thể tự chụp, hoặc bảo t chụp thêm nếu những ảnh đã có chưa đủ hoặc đã outdate (đặc biệt lưu ý tránh sai thông tin)
+3. T thấy phần kiểm thử có vẻ chưa có nhiều trong báo cáo, thiết kế và thực hiện các ca kiểm thử có thể rồi chỉ cần viết kết quả vào báo cáo thôi
