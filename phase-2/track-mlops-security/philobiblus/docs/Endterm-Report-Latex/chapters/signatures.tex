@@ -1,11 +1,13 @@
 \clearpage
-\thispagestyle{plain}
-\includegraphics[
-  page=1,
-  width=\textwidth,
-  height=0.94\textheight,
-  keepaspectratio
-]{../Adobe Scan 2026年10月05日.pdf}
+\thispagestyle{empty}
+\begin{tikzpicture}[remember picture,overlay]
+  \node[anchor=south west,inner sep=0pt] at (current page.south west) {\includegraphics[
+    page=1,
+    width=\paperwidth,
+    height=\paperheight
+  ]{../Adobe Scan 2026年10月05日.pdf}};
+\end{tikzpicture}
+\null
 \clearpage
 \begin{center}
 \includegraphics[width=3.0cm]{university-logo.png}\par
