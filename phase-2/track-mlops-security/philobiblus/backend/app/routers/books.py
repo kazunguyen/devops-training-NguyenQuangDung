@@ -17,6 +17,7 @@ from app.models import (
     ReadingHistory,
     User,
 )
+from app.recommendation_load_shedder import recommendation_load_shedder
 from app.rate_limit import enforce_rate_limit
 from app.schemas import (
     BookCreate,
@@ -29,7 +30,11 @@ from app.schemas import (
     BookStatsOut,
     BookUpdate,
 )
-from app.services.recommendation_client import fetch_recommendations, fetch_profile_recommendations
+from app.services.recommendation_client import (
+    fetch_profile_recommendations,
+    fetch_recommendations,
+    recommendations_enabled,
+)
 
 router = APIRouter(
     prefix="/api/books",
@@ -457,6 +462,12 @@ def get_personal_recommendations(
     db: Session = Depends(get_db),
 ) -> BookRecommendationsOut:
     """Return personalized recommendations based on reading progress."""
+    if not recommendations_enabled():
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    if not recommendation_load_shedder.admit().allowed:
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
     enforce_rate_limit(
         request=request,
         scope="recommendation",
@@ -671,6 +682,12 @@ def get_public_book_recommendations(
     db: Session = Depends(get_db),
 ) -> BookRecommendationsOut:
     """Return only public recommendations for one public source book."""
+    if not recommendations_enabled():
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    if not recommendation_load_shedder.admit().allowed:
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
     enforce_rate_limit(
         request=request,
         scope="public_recommendation",

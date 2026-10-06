@@ -36,12 +36,14 @@ const ReadOnlyBookDetail = () => {
   });
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadBook = async () => {
       try {
         setError(null);
         const data = shareToken
-          ? await bookService.getSharedBook(shareToken)
-          : await bookService.getPublicBookById(id);
+          ? await bookService.getSharedBook(shareToken, { signal: controller.signal })
+          : await bookService.getPublicBookById(id, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         setBook(data);
         setProgressDraft(
           data.my_reading_progress
@@ -49,11 +51,15 @@ const ReadOnlyBookDetail = () => {
             : null,
         );
       } catch (loadError) {
+        if (loadError.name === 'AbortError') return;
         setError(loadError.message);
       }
     };
 
     loadBook();
+    return () => {
+      controller.abort();
+    };
   }, [id, shareToken]);
 
   const handleStartReading = async () => {
@@ -125,13 +131,16 @@ const ReadOnlyBookDetail = () => {
     }
 
     let isCurrent = true;
+    const controller = new AbortController();
 
     const loadRecommendations = async () => {
       setIsRecommendationsLoading(true);
       setHasRecommendationError(false);
 
       try {
-        const data = await bookService.getPublicBookRecommendations(id);
+        const data = await bookService.getPublicBookRecommendations(id, 5, {
+          signal: controller.signal,
+        });
 
         if (!isCurrent) {
           return;
@@ -139,7 +148,8 @@ const ReadOnlyBookDetail = () => {
 
         setRecommendations(Array.isArray(data.books) ? data.books : []);
         setRecommendationSource(data.source);
-      } catch {
+      } catch (recommendationError) {
+        if (recommendationError.name === 'AbortError') return;
         if (isCurrent) {
           setRecommendations([]);
           setRecommendationSource(null);
@@ -156,6 +166,7 @@ const ReadOnlyBookDetail = () => {
 
     return () => {
       isCurrent = false;
+      controller.abort();
     };
   }, [id, shareToken]);
 
@@ -397,7 +408,7 @@ const ReadOnlyBookDetail = () => {
               </div>
             </div>
 
-            {recommendationSource && (
+            {recommendationSource && recommendationSource !== 'unavailable' && (
               <Badge variant="outline">
                 {recommendationSource === "model"
                   ? "Content matched"
@@ -410,7 +421,7 @@ const ReadOnlyBookDetail = () => {
             <p className="text-sm text-muted-foreground">
               Finding related books...
             </p>
-          ) : hasRecommendationError ? (
+          ) : hasRecommendationError || recommendationSource === 'unavailable' ? (
             <p className="text-sm text-muted-foreground">
               Recommendations are unavailable right now.
             </p>

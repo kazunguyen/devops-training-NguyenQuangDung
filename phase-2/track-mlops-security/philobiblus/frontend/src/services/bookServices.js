@@ -24,11 +24,15 @@ const fetchWithAuth = async (url, options = {}) => {
     try {
       errorData = await response.json();
     } catch (e) {
-      throw new Error(`Error ${response.status}: Failed to fetch data`);
+      const error = new Error(`Error ${response.status}: Failed to fetch data`);
+      error.status = response.status;
+      throw error;
     }
 
     // FastAPI returns detailed error information in the 'detail' field
-    throw new Error(errorData.detail || 'API request failed');
+    const error = new Error(errorData.detail || 'API request failed');
+    error.status = response.status;
+    throw error;
   }
 
   // Handle 204 No Content responses which lack a JSON body to parse
@@ -78,7 +82,7 @@ export const bookService = {
     });
   },
 
-  async getPublicBooks(filters = {}) {
+  async getPublicBooks(filters = {}, options = {}) {
     const queryParams = new URLSearchParams();
     if (filters.genre) queryParams.append('genre', filters.genre);
     if (filters.search) queryParams.append('search', filters.search);
@@ -87,31 +91,33 @@ export const bookService = {
       ? `${BOOKS_URL}/public?${queryParams.toString()}`
       : `${BOOKS_URL}/public`;
 
-    return fetchWithAuth(url);
+    return fetchWithAuth(url, options);
   },
 
-  async getPublicBookById(id) {
-    return fetchWithAuth(`${BOOKS_URL}/public/${id}`);
+  async getPublicBookById(id, options = {}) {
+    return fetchWithAuth(`${BOOKS_URL}/public/${id}`, options);
   },
 
-  async getPublicBookRecommendations(id, limit = 5) {
+  async getPublicBookRecommendations(id, limit = 5, options = {}) {
     const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 5);
     const bookId = encodeURIComponent(id);
 
     return fetchWithAuth(
       `${BOOKS_URL}/public/${bookId}/recommendations?limit=${safeLimit}`,
+      options,
     );
   },
 
-  async getRecommendationsForMe(limit = 5) {
+  async getRecommendationsForMe(limit = 5, options = {}) {
     const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 5);
     return fetchWithAuth(
       `${BOOKS_URL}/recommendations/for-me?limit=${safeLimit}`,
+      options,
     );
   },
 
-  async getSharedBook(shareToken) {
-    return fetchWithAuth(`${BOOKS_URL}/shared/${encodeURIComponent(shareToken)}`);
+  async getSharedBook(shareToken, options = {}) {
+    return fetchWithAuth(`${BOOKS_URL}/shared/${encodeURIComponent(shareToken)}`, options);
   },
 
   async startReadingPublicBook(bookId, shareToken = null) {

@@ -17,6 +17,17 @@ RECOMMENDATION_SERVICE_URL = os.environ.get(
 RECOMMENDATION_TIMEOUT_SECONDS = float(
     os.environ.get("RECOMMENDATION_TIMEOUT_SECONDS", "2")
 )
+RECOMMENDATIONS_ENABLED = os.environ.get("RECOMMENDATIONS_ENABLED", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def recommendations_enabled() -> bool:
+    """Return the emergency operator override for the optional component."""
+    return RECOMMENDATIONS_ENABLED
 
 
 @dataclass(frozen=True)
@@ -122,4 +133,4 @@ def fetch_profile_recommendations(
             recommendation := _parse_recommendation(item)
         ) is not None
     ]
-    return recommendations
+    return recommendations

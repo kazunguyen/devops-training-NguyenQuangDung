@@ -22,31 +22,44 @@ const PublicDashboardPage = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [isRecommendationsLoading, setIsRecommendationsLoading] = useState(false);
     const [hasRecommendationError, setHasRecommendationError] = useState(false);
+    const [isRecommendationsUnavailable, setIsRecommendationsUnavailable] = useState(false);
 
     useEffect(() => {
-        if (isAuthenticated) {
-            fetchRecommendations();
-        } else {
+        if (!isAuthenticated) {
             setRecommendations([]);
+            setIsRecommendationsUnavailable(false);
+            return undefined;
         }
-    }, [isAuthenticated]);
 
-    const fetchRecommendations = async () => {
-        try {
-            setIsRecommendationsLoading(true);
-            setHasRecommendationError(false);
-            const data = await bookService.getRecommendationsForMe(5);
-            setRecommendations(Array.isArray(data.books) ? data.books : []);
-            if (import.meta.env.DEV && data.source) {
-                console.debug('[PublicDashboard] Recommendation source:', data.source);
+        const controller = new AbortController();
+        const loadRecommendations = async () => {
+            try {
+                setIsRecommendationsLoading(true);
+                setHasRecommendationError(false);
+                setIsRecommendationsUnavailable(false);
+                const data = await bookService.getRecommendationsForMe(5, {
+                    signal: controller.signal,
+                });
+                if (controller.signal.aborted) return;
+                setIsRecommendationsUnavailable(data.source === 'unavailable');
+                setRecommendations(Array.isArray(data.books) ? data.books : []);
+                if (import.meta.env.DEV && data.source) {
+                    console.debug('[PublicDashboard] Recommendation source:', data.source);
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') return;
+                setRecommendations([]);
+                setHasRecommendationError(true);
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsRecommendationsLoading(false);
+                }
             }
-        } catch (err) {
-            setRecommendations([]);
-            setHasRecommendationError(true);
-        } finally {
-            setIsRecommendationsLoading(false);
-        }
-    };
+        };
+
+        loadRecommendations();
+        return () => controller.abort();
+    }, [isAuthenticated]);
 
     useEffect(() => {
         setBookView(defaultBookView);
@@ -131,8 +144,10 @@ const PublicDashboardPage = () => {
                                 <CardContent className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 pb-4 custom-scrollbar">
                                     {isRecommendationsLoading ? (
                                         <p className="text-muted-foreground">Loading recommendations...</p>
+                                    ) : isRecommendationsUnavailable ? (
+                                        <p className="text-sm text-muted-foreground">Recommendations unavailable.</p>
                                     ) : hasRecommendationError ? (
-                                        <p className="text-sm text-destructive">Failed to load recommendations.</p>
+                                        <p className="text-sm text-muted-foreground">Recommendations unavailable.</p>
                                     ) : recommendations.length === 0 ? (
                                         <p className="text-muted-foreground">Start reading to get personalized recommendations.</p>
                                     ) : (

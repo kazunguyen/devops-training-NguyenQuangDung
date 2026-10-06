@@ -235,11 +235,11 @@ class BookRecommendationOut(BookPublicOut):
 
 
 class BookRecommendationsOut(BaseModel):
-    """Return recommendations produced by the model or genre fallback."""
+    """Return recommendations produced by the model, fallback, or an unavailable component."""
 
     books: List[BookRecommendationOut]
     model_version: Optional[str] = None
-    source: Literal["model", "genre_fallback", "catalog_fallback"]
+    source: Literal["model", "genre_fallback", "catalog_fallback", "unavailable"]
 
 # --- Admin Schemas ---
 
