@@ -1,0 +1,45 @@
+# Copy to values.local.yaml (ignored by Git) and replace all placeholder values.
+# `values.local.yaml` is intended for a local k3d cluster with images imported
+# using `k3d image import`.
+secrets:
+  create: true
+  existingSecret: ""
+  postgresUser: postgres
+  postgresPassword: REPLACE_WITH_LOCAL_PASSWORD
+  postgresDatabase: philobiblus_db
+  jwtSecret: REPLACE_WITH_LONG_RANDOM_LOCAL_JWT_SECRET
+  imgbbApi: REPLACE_WITH_IMGBB_API_KEY
+
+backend:
+  bindHost: 0.0.0.0
+  allowedOrigins: http://localhost,https://kazunguyen.github.io
+  service:
+    port: 8000
+
+frontend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  apiUrl: /api
+  devHost: 0.0.0.0
+  devPort: 5173
+  service:
+    port: 5173
+  grafanaUrl: http://127.0.0.1:3000
+
+postgres:
+  service:
+    port: 5432
+
+ingress:
+  host: localhost
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s

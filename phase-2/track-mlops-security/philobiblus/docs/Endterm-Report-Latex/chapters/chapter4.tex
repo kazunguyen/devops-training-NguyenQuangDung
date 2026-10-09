@@ -1,0 +1,35 @@
+\reportchapter{IV. CÁCH CÀI ĐẶT PHẦN MỀM}
+
+\reportsection{a. Triển khai phần mềm}
+Philobiblus được chia thành frontend, backend, cơ sở dữ liệu và các thành phần phục vụ hệ thống gợi ý. Frontend được phát hành riêng trên GitHub Pages, còn backend, recommendation service và các thành phần MLOps được triển khai trên cụm Kubernetes bằng Helm chart.
+
+\textbf{Frontend.} Frontend được build và phát hành tự động bởi workflow \href{https://github.com/kazunguyen/philobiblus/blob/main/.github/workflows/deploy-pages.yaml}{\texttt{deploy-pages.yaml}}. Workflow này tạo bản build của giao diện React, đưa lên GitHub Pages và cấu hình địa chỉ API để frontend kết nối tới backend \cite{github-actions}. Vì frontend được cung cấp qua GitHub Pages nên không cần chạy thêm frontend Pod trên cụm Kubernetes.
+
+\textbf{Backend.} Backend được đóng gói thành Docker Image \href{https://hub.docker.com/r/kazu912/philobiblus-backend}{\texttt{kazu912/philobiblus-backend}} và triển khai thành các Pod trên GKE. Kubernetes cung cấp Service để nhận request từ frontend, đồng thời sử dụng Deployment, probe và Horizontal Pod Autoscaler để duy trì số lượng Pod phù hợp với tải hệ thống \cite{docker,kubernetes,gke-autopilot}.
+
+\textbf{Cơ sở dữ liệu.} Dữ liệu nghiệp vụ được lưu trên Cloud SQL for PostgreSQL, là dịch vụ cơ sở dữ liệu được Google Cloud quản lý. Backend kết nối tới Cloud SQL thông qua Cloud SQL Auth Proxy; thông tin xác thực được cung cấp bằng Secret thay vì lưu trực tiếp trong mã nguồn \cite{cloud-sql}.
+
+\textbf{Recommendation service và MLOps.} Recommendation service được đóng gói thành Docker Image \href{https://hub.docker.com/r/kazu912/philobiblus-recommendation}{\texttt{kazu912/philobiblus-recommendation}} và phục vụ độc lập trên Kubernetes. Image \href{https://hub.docker.com/r/kazu912/philobiblus-model-fetcher}{\texttt{kazu912/philobiblus-model-fetcher}} được dùng để tải model artifact vào môi trường chạy. Các thành phần huấn luyện và quản lý model được đóng gói lần lượt trong Docker Image \href{https://hub.docker.com/r/kazu912/philobiblus-trainer}{\texttt{kazu912/philobiblus-trainer}} và Docker Image \href{https://hub.docker.com/r/kazu912/philobiblus-mlflow}{\texttt{kazu912/philobiblus-mlflow}}.
+
+\textbf{Triển khai bằng Helm.} Các thành phần ứng dụng được mô tả trong \href{https://github.com/kazunguyen/philobiblus/tree/main/kubernetes/helm/philobiblus}{Helm chart của ứng dụng}, còn pipeline MLOps được mô tả trong \href{https://github.com/kazunguyen/philobiblus/tree/main/kubernetes/helm/philobiblus-mlops}{Helm chart MLOps}. Helm cho phép cài đặt hoặc cập nhật nhiều tài nguyên Kubernetes từ cùng một bộ cấu hình \cite{helm-charts}.
+
+Trên một cụm Kubernetes đã được cấu hình quyền truy cập, người triển khai chuẩn bị các giá trị môi trường, Secret và thông tin kết nối Cloud SQL, sau đó cài đặt Helm chart ứng dụng vào namespace \texttt{philobiblus}. Frontend được tắt trong chart vì đã được phát hành trên GitHub Pages. Helm chart MLOps được cài đặt riêng vào namespace \texttt{philobiblus-mlops} để tách các tác vụ huấn luyện và quản lý model khỏi workload phục vụ người dùng.
+
+Sau khi clone repository, ta có thể cài đặt hai chart bằng các lệnh sau. Các file giá trị môi trường được giữ ngoài repository và chứa thông tin riêng của từng cụm Kubernetes.
+
+\begin{verbatim}
+helm upgrade --install philobiblus \\
+  ./kubernetes/helm/philobiblus \\
+  --namespace philobiblus --create-namespace \\
+  --set frontend.enabled=false -f <production-values.yaml>
+
+helm upgrade --install philobiblus-mlops \\
+  ./kubernetes/helm/philobiblus-mlops \\
+  --namespace philobiblus-mlops --create-namespace \\
+  -f <mlops-values.yaml>
+\end{verbatim}
+
+Sau khi Helm hoàn tất triển khai, Kubernetes tạo các Deployment, Service, Secret reference, probe và autoscaling policy cần thiết cho từng thành phần. Khi cần cập nhật phần mềm, người triển khai thay đổi phiên bản các thành phần trong file giá trị môi trường rồi nâng cấp lại Helm release.
+
+\reportsection{b. Về phía người dùng}
+Sau khi quá trình triển khai hoàn tất, Philobiblus là ứng dụng web nên người dùng chỉ cần mở địa chỉ GitHub Pages bằng trình duyệt, không phải cài đặt thêm phần mềm trên máy. Sau khi đăng nhập, người dùng có thể quản lý sách, cập nhật tiến độ đọc, viết nhận xét và nhận gợi ý từ recommendation service.

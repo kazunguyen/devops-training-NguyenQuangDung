@@ -1,0 +1,286 @@
+from datetime import date, datetime
+from typing import Optional, List, Literal
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.models import (
+    BookStatus,
+    BookVisibility,
+    FriendshipStatus,
+    PublicationStatus,
+)
+
+
+# --- User Schemas ---
+
+class UserBase(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    email: EmailStr
+
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=6, max_length=100)
+
+
+class UserOut(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    is_active: bool
+    is_admin: bool = False
+    created_at: Optional[datetime] = None
+
+
+class UserPublicOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    created_at: Optional[datetime] = None
+
+
+class UserSettingsBase(BaseModel):
+    theme: str = Field("light", pattern="^(light|dark)$")
+    default_book_view: str = Field("grid", pattern="^(grid|list)$")
+
+
+class UserSettingsUpdate(BaseModel):
+    theme: Optional[str] = Field(None, pattern="^(light|dark)$")
+    default_book_view: Optional[str] = Field(None, pattern="^(grid|list)$")
+
+
+class ImageUploadOut(BaseModel):
+    url: str = Field(..., min_length=1, max_length=500)
+
+
+class UserSettingsOut(UserSettingsBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# --- Token Schemas (JWT) ---
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
+
+# --- Book Schemas ---
+
+class BookBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    author: str = Field(..., min_length=1, max_length=255)
+    genre: str = Field(..., max_length=100)
+    status: BookStatus = BookStatus.WANT_TO_READ
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    volume: int = Field(-1, ge=-1)
+    cover_url: Optional[str] = Field(None, max_length=500)
+    pages_total: int = Field(-1, ge=-1)
+    pages_read: int = Field(-1, ge=-1)
+    chapters_read: float = Field(-1.0, ge=-1)
+    date_started: Optional[date] = None
+    date_finished: Optional[date] = None
+    notes: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    visibility: BookVisibility = BookVisibility.PUBLIC
+    publication_status: PublicationStatus = PublicationStatus.ONGOING
+
+
+class BookCreate(BookBase):
+    pass
+
+
+class BookUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    author: Optional[str] = Field(None, min_length=1, max_length=255)
+    genre: Optional[str] = Field(None, max_length=100)
+    status: Optional[BookStatus] = None
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    volume: Optional[int] = Field(None, ge=-1)
+    cover_url: Optional[str] = Field(None, max_length=500)
+    pages_total: Optional[int] = Field(None, ge=-1)
+    pages_read: Optional[int] = Field(None, ge=-1)
+    date_started: Optional[date] = None
+    date_finished: Optional[date] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = Field(None, max_length=20)
+    visibility: Optional[BookVisibility] = None
+    publication_status: Optional[PublicationStatus] = None
+    chapters_read: Optional[float] = Field(None, ge=-1)
+
+class BookOut(BookBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class BookOwnerOut(BookOut):
+    share_token: Optional[str] = None
+
+
+class BookReadingProgressUpdate(BaseModel):
+    status: Optional[BookStatus] = None
+    pages_read: Optional[int] = Field(None, ge=-1)
+    chapters_read: Optional[float] = Field(None, ge=-1)
+    volume: Optional[int] = Field(None, ge=-1)
+
+
+class BookReadingProgressOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    book_id: int
+    user_id: int
+    status: BookStatus
+    pages_read: int
+    chapters_read: float
+    volume: int
+    date_started: date
+    date_finished: Optional[date] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class BookStatsOut(BaseModel):
+    total_books: int
+    want_to_read: int
+    reading: int
+    completed: int
+    dropped: int
+    total_pages: int
+    total_pages_read: int
+    average_rating: float
+    reading_progress: float
+
+
+class BookPublicOut(BookOut):
+    owner: Optional[UserPublicOut] = None
+    active_reader_count: int = Field(0, ge=0)
+    my_reading_progress: Optional[BookReadingProgressOut] = None
+
+
+# --- Review Schemas ---
+
+class ReviewCreate(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(None, max_length=2000)
+
+
+class ReviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    book_id: int
+    user_id: int
+    rating: int
+    comment: Optional[str] = None
+    created_at: Optional[datetime] = None
+    reviewer: UserPublicOut
+
+class FollowOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    follower_id: int
+    following_id: int
+    created_at: Optional[datetime] = None
+
+
+class FriendshipOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: FriendshipStatus
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    requested_by: UserPublicOut
+    user_one: UserPublicOut
+    user_two: UserPublicOut
+
+
+class RelationshipOut(BaseModel):
+    target_user: UserPublicOut
+    is_following: bool
+    friendship: Optional[FriendshipOut] = None
+
+class ReadingHistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    book_id: int
+    user_id: int
+    read_on: date
+    pages_read: Optional[int] = None
+    chapters_read: Optional[float] = None
+    chapter: Optional[str] = None
+    volume: Optional[int] = None
+    note: Optional[str] = None
+    created_at: Optional[datetime] = None
+    recorded_at: Optional[datetime] = None
+
+class BookRecommendationOut(BookPublicOut):
+    """Expose one public book with an optional model similarity score."""
+
+    score: Optional[float] = Field(None, ge=0)
+
+
+class BookRecommendationsOut(BaseModel):
+    """Return recommendations produced by the model, fallback, or an unavailable component."""
+
+    books: List[BookRecommendationOut]
+    model_version: Optional[str] = None
+    source: Literal["model", "genre_fallback", "catalog_fallback", "unavailable"]
+
+# --- Admin Schemas ---
+
+class AdminUserOut(UserOut):
+    updated_at: Optional[datetime] = None
+    book_count: int = Field(0, ge=0)
+
+
+class AdminBookOut(BookOwnerOut):
+    owner: Optional[UserPublicOut] = None
+    active_reader_count: int = Field(0, ge=0)
+
+
+class AdminUserDetailOut(BaseModel):
+    user: AdminUserOut
+    books: List[AdminBookOut]
+
+
+class AdminBookDetailOut(BaseModel):
+    book: AdminBookOut
+    reviews: List[ReviewOut]
+    reading_history: List[ReadingHistoryOut]
+
+
+class AdminPasswordReset(BaseModel):
+    password: str = Field(..., min_length=6, max_length=100)
+
+
+class AdminUserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class AdminUserDeletionOut(BaseModel):
+    deleted_username: str
+    retained_book_count: int = Field(0, ge=0)
+
+
+class AdminOverviewOut(BaseModel):
+    total_users: int = Field(0, ge=0)
+    active_users: int = Field(0, ge=0)
+    total_books: int = Field(0, ge=0)
+    public_books: int = Field(0, ge=0)
+    restricted_books: int = Field(0, ge=0)
+    private_books: int = Field(0, ge=0)

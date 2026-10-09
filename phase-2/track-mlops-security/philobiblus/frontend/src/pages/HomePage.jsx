@@ -1,0 +1,34 @@
+import React from 'react';
+import { ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+
+const HomePage = () => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-7xl items-center px-4 py-12 sm:px-6 lg:px-8">
+        <section className="max-w-2xl space-y-6">
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+              Welcome to Philobiblus
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={() => navigate('/register')}>
+              Get started
+              <ArrowRight />
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/dashboard')}>
+              Explore dashboard
+            </Button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+
+export default HomePage;

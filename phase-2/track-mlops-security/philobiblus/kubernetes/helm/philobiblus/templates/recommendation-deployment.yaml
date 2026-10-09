@@ -1,0 +1,99 @@
+{{- if .Values.recommendation.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "philobiblus.fullname" . }}-recommendation
+  labels:
+    {{- include "philobiblus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: recommendation
+spec:
+  replicas: {{ .Values.recommendation.replicaCount }}
+  progressDeadlineSeconds: {{ .Values.recommendation.progressDeadlineSeconds }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "philobiblus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: recommendation
+  template:
+    metadata:
+      {{- if .Values.recommendation.initialModelVersion }}
+      annotations:
+        mlops.philobiblus.io/model-version: {{ .Values.recommendation.initialModelVersion | quote }}
+      {{- end }}
+      labels:
+        {{- include "philobiblus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: recommendation
+    spec:
+      serviceAccountName: {{ include "philobiblus.recommendationServiceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: model-fetcher
+          image: {{ include "philobiblus.fetcherImage" . | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MODEL_URI
+              valueFrom:
+                configMapKeyRef: { name: model-release, key: model_uri }
+            - name: MODEL_SHA256
+              valueFrom:
+                configMapKeyRef: { name: model-release, key: model_sha256 }
+            - name: MODEL_VERSION
+              valueFrom:
+                configMapKeyRef: { name: model-release, key: model_version }
+          volumeMounts:
+            - name: model-volume
+              mountPath: /model
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: recommendation
+          image: {{ include "philobiblus.recommendationImage" . | quote }}
+          imagePullPolicy: {{ .Values.recommendation.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.recommendation.service.port }}
+          env:
+            - name: MODEL_PATH
+              value: "/model/model.joblib"
+          volumeMounts:
+            - name: model-volume
+              mountPath: /model
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.recommendation.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.recommendation.probe.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ add .Values.recommendation.probe.initialDelaySeconds 10 }}
+            periodSeconds: {{ .Values.recommendation.probe.periodSeconds }}
+          resources:
+            {{- toYaml .Values.recommendation.resources | nindent 12 }}
+      volumes:
+        - name: model-volume
+          emptyDir: {}
+{{- end }}

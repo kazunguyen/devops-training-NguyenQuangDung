@@ -1,0 +1,202 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "philobiblus.fullname" . }}-backend
+  labels:
+    {{- include "philobiblus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "philobiblus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "philobiblus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: {{ include "philobiblus.backendServiceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.externalDatabase.enabled }}
+        - name: cloud-sql-proxy
+          image: {{ .Values.externalDatabase.proxy.image | quote }}
+          restartPolicy: Always
+          args:
+            - "--structured-logs"
+            {{- if .Values.externalDatabase.proxy.privateIp }}
+            - "--private-ip"
+            {{- end }}
+            - "--unix-socket=/cloudsql"
+            - {{ required "externalDatabase.connectionName is required" .Values.externalDatabase.connectionName | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: cloudsql
+              mountPath: /cloudsql
+          resources:
+            {{- toYaml .Values.externalDatabase.proxy.resources | nindent 12 }}
+        {{- else }}
+        - name: wait-for-postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          command: ["sh", "-c", "until pg_isready -h {{ include "philobiblus.fullname" . }}-postgres -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\"; do sleep 2; done"]
+          envFrom:
+            - secretRef:
+                name: {{ include "philobiblus.secretName" . }}
+        {{- end }}
+      containers:
+        - name: backend
+          image: {{ include "philobiblus.backendImage" . | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ required "backend.service.port is required" .Values.backend.service.port }}
+          env:
+            {{- if .Values.externalDatabase.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: DATABASE_URL
+            {{- else }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: POSTGRES_DB
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "philobiblus.fullname" . }}-postgres:{{ required "postgres.service.port is required" .Values.postgres.service.port }}/$(POSTGRES_DB)"
+            {{- end }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: SECRET_KEY
+            - name: IMGBB_API
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "philobiblus.secretName" . }}
+                  key: IMGBB_API
+                  optional: true
+            - name: APP_HOST
+              value: {{ required "backend.bindHost is required" .Values.backend.bindHost | quote }}
+            - name: APP_PORT
+              value: {{ required "backend.service.port is required" .Values.backend.service.port | quote }}
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              value: {{ .Values.backend.accessTokenExpireMinutes | quote }}
+            - name: ALLOWED_ORIGINS
+              value: {{ required "backend.allowedOrigins is required" .Values.backend.allowedOrigins | quote }}
+            - name: ENABLE_API_DOCS
+              value: {{ .Values.backend.apiDocs.enabled | quote }}
+            - name: RATE_LIMIT_ENABLED
+              value: {{ .Values.backend.rateLimit.enabled | quote }}
+            - name: RATE_LIMIT_TRUST_PROXY_HEADERS
+              value: {{ .Values.backend.rateLimit.trustProxyHeaders | quote }}
+            - name: RATE_LIMIT_FALLBACK_POD_COUNT
+              value: {{ .Values.backend.rateLimit.fallbackPodCount | quote }}
+            - name: RECOMMENDATIONS_ENABLED
+              value: {{ .Values.backend.recommendationsEnabled | quote }}
+            - name: RECOMMENDATION_LOAD_SHEDDING_ENABLED
+              value: {{ .Values.backend.recommendationLoadShedding.enabled | quote }}
+            - name: RECOMMENDATION_LOAD_SHEDDING_MAX_REQUESTS
+              value: {{ .Values.backend.recommendationLoadShedding.maxRequests | quote }}
+            - name: RECOMMENDATION_LOAD_SHEDDING_WINDOW_SECONDS
+              value: {{ .Values.backend.recommendationLoadShedding.windowSeconds | quote }}
+            - name: RECOMMENDATION_LOAD_SHEDDING_COOLDOWN_SECONDS
+              value: {{ .Values.backend.recommendationLoadShedding.cooldownSeconds | quote }}
+            - name: IMGBB_TIMEOUT_SECONDS
+              value: {{ .Values.backend.uploads.imgbbTimeoutSeconds | quote }}
+            - name: UPLOAD_MAX_CONCURRENCY
+              value: {{ .Values.backend.uploads.maxConcurrency | quote }}
+            - name: DATABASE_POOL_SIZE
+              value: {{ .Values.backend.databasePool.size | quote }}
+            - name: DATABASE_MAX_OVERFLOW
+              value: {{ .Values.backend.databasePool.maxOverflow | quote }}
+            - name: DATABASE_POOL_TIMEOUT_SECONDS
+              value: {{ .Values.backend.databasePool.timeoutSeconds | quote }}
+            - name: DATABASE_POOL_RECYCLE_SECONDS
+              value: {{ .Values.backend.databasePool.recycleSeconds | quote }}
+            - name: CATALOG_CACHE_TTL_SECONDS
+              value: {{ .Values.backend.catalogCache.ttlSeconds | quote }}
+            - name: OTEL_TRACING_ENABLED
+              value: {{ .Values.backend.observability.tracing.enabled | quote }}
+            {{- if .Values.backend.observability.tracing.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ required "backend.observability.tracing.endpoint is required when tracing is enabled" .Values.backend.observability.tracing.endpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.backend.observability.tracing.serviceName | quote }}
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: redis://{{ include "philobiblus.fullname" . }}-redis:{{ .Values.redis.service.port }}/0
+            {{- end }}
+            {{ if .Values.recommendation.enabled }}
+            - name: RECOMMENDATION_SERVICE_URL
+              value: "http://{{ include "philobiblus.fullname" . }}-recommendation:{{ .Values.recommendation.service.port }}"
+            - name: RECOMMENDATION_TIMEOUT_SECONDS
+              value: {{ .Values.recommendation.timeoutSeconds | quote }}
+            {{ end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: {{ .Values.backend.probe.startupPeriodSeconds }}
+            failureThreshold: {{ .Values.backend.probe.startupFailureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.probe.readinessInitialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probe.readinessPeriodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probe.readinessTimeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probe.readinessFailureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.probe.livenessInitialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probe.livenessPeriodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probe.livenessTimeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probe.livenessFailureThreshold }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.externalDatabase.enabled }}
+          volumeMounts:
+            - name: cloudsql
+              mountPath: /cloudsql
+          {{- end }}
+      {{- if .Values.externalDatabase.enabled }}
+      volumes:
+        - name: cloudsql
+          emptyDir: {}
+      {{- end }}

@@ -1,0 +1,339 @@
+locals {
+  name = "philobiblus"
+
+  backend_image_parts        = split("@", var.backend_image)
+  recommendation_image_parts = split("@", var.recommendation_image)
+  model_fetcher_image_parts  = split("@", var.model_fetcher_image)
+
+  backend_ksa        = "philobiblus-backend"
+  recommendation_ksa = "philobiblus-recommendation"
+  seed_ksa           = "philobiblus-seed"
+  recommendation_gsa = "philobiblus-recommend@${var.project_id}.iam.gserviceaccount.com"
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+data "terraform_remote_state" "foundation" {
+  backend = "gcs"
+
+  config = {
+    bucket = var.state_bucket_name
+    prefix = "philobiblus/foundation"
+  }
+}
+
+data "terraform_remote_state" "platform" {
+  backend = "gcs"
+
+  config = {
+    bucket = var.state_bucket_name
+    prefix = "philobiblus/gke-platform"
+  }
+}
+
+resource "kubernetes_namespace_v1" "app" {
+  metadata {
+    name = var.namespace
+
+    labels = {
+      "app.kubernetes.io/name"                     = "philobiblus"
+      "pod-security.kubernetes.io/enforce"         = "baseline"
+      "pod-security.kubernetes.io/enforce-version" = "latest"
+      "pod-security.kubernetes.io/audit"           = "restricted"
+      "pod-security.kubernetes.io/audit-version"   = "latest"
+      "pod-security.kubernetes.io/warn"            = "restricted"
+      "pod-security.kubernetes.io/warn-version"    = "latest"
+    }
+  }
+}
+
+resource "kubernetes_resource_quota_v1" "app" {
+  metadata {
+    name      = "philobiblus-quota"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  spec {
+    hard = {
+      "requests.cpu"    = "2"
+      "requests.memory" = "4Gi"
+      "limits.cpu"      = "6"
+      "limits.memory"   = "8Gi"
+      "pods"            = "20"
+      "services"        = "10"
+    }
+  }
+}
+
+resource "kubernetes_limit_range_v1" "app" {
+  metadata {
+    name      = "philobiblus-defaults"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  spec {
+    limit {
+      type = "Container"
+
+      default = {
+        cpu    = "500m"
+        memory = "512Mi"
+      }
+
+      default_request = {
+        cpu    = "100m"
+        memory = "128Mi"
+      }
+    }
+  }
+}
+
+resource "kubernetes_service_account_v1" "backend" {
+  metadata {
+    name      = local.backend_ksa
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+
+    annotations = {
+      "iam.gke.io/gcp-service-account" = data.terraform_remote_state.foundation.outputs.backend_service_account
+    }
+  }
+}
+
+resource "kubernetes_service_account_v1" "recommendation" {
+  metadata {
+    name      = local.recommendation_ksa
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+
+    annotations = {
+      "iam.gke.io/gcp-service-account" = local.recommendation_gsa
+    }
+  }
+}
+
+resource "kubernetes_service_account_v1" "seed" {
+  metadata {
+    name      = local.seed_ksa
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+
+    annotations = {
+      "iam.gke.io/gcp-service-account" = data.terraform_remote_state.foundation.outputs.seed_service_account
+    }
+  }
+}
+
+resource "google_service_account_iam_member" "backend_workload_identity" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${data.terraform_remote_state.foundation.outputs.backend_service_account}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/${local.backend_ksa}]"
+}
+
+resource "google_service_account_iam_member" "seed_workload_identity" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${data.terraform_remote_state.foundation.outputs.seed_service_account}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/${local.seed_ksa}]"
+}
+
+resource "google_service_account_iam_member" "recommendation_workload_identity" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${local.recommendation_gsa}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/${local.recommendation_ksa}]"
+}
+
+resource "helm_release" "philobiblus" {
+  name      = local.name
+  namespace = kubernetes_namespace_v1.app.metadata[0].name
+  chart     = abspath("${path.module}/../../../kubernetes/helm/philobiblus")
+
+  atomic          = true
+  cleanup_on_fail = true
+  wait            = true
+  wait_for_jobs   = true
+  timeout         = 1200
+
+  values = [
+    yamlencode({
+      backend = {
+        replicaCount = 2
+        autoscaling = {
+          enabled                        = true
+          minReplicas                    = 2
+          maxReplicas                    = 6
+          targetCPUUtilizationPercentage = 50
+        }
+        image = {
+          repository = local.backend_image_parts[0]
+          tag        = ""
+          digest     = local.backend_image_parts[1]
+          pullPolicy = "IfNotPresent"
+        }
+        service = {
+          type = "ClusterIP"
+          port = 8000
+        }
+        bindHost       = "0.0.0.0"
+        allowedOrigins = var.frontend_origin
+        apiDocs = {
+          enabled = false
+        }
+        rateLimit = {
+          enabled           = true
+          trustProxyHeaders = true
+          fallbackPodCount  = 6
+        }
+        recommendationsEnabled = var.recommendations_enabled
+        recommendationLoadShedding = {
+          enabled         = var.recommendation_load_shedding_enabled
+          maxRequests     = var.recommendation_load_shedding_max_requests
+          windowSeconds   = var.recommendation_load_shedding_window_seconds
+          cooldownSeconds = var.recommendation_load_shedding_cooldown_seconds
+        }
+        uploads = {
+          imgbbTimeoutSeconds = 15
+          maxConcurrency      = 2
+        }
+        databasePool = {
+          size           = 3
+          maxOverflow    = 2
+          timeoutSeconds = 10
+          recycleSeconds = 1800
+        }
+        catalogCache = {
+          ttlSeconds = 30
+        }
+      }
+      frontend = {
+        enabled = false
+      }
+      postgres = {
+        enabled = false
+      }
+      recommendation = {
+        enabled      = true
+        replicaCount = 1
+        image = {
+          repository = local.recommendation_image_parts[0]
+          tag        = ""
+          digest     = local.recommendation_image_parts[1]
+          pullPolicy = "IfNotPresent"
+        }
+        service = {
+          port = 8080
+        }
+        fetcherImage = {
+          repository = local.model_fetcher_image_parts[0]
+          tag        = ""
+          digest     = local.model_fetcher_image_parts[1]
+        }
+      }
+      redis = {
+        enabled      = true
+        replicaCount = 1
+        image = {
+          repository = "redis"
+          tag        = "7.4-alpine"
+          pullPolicy = "IfNotPresent"
+        }
+        service = {
+          port = 6379
+        }
+        resources = {
+          requests = {
+            cpu    = "50m"
+            memory = "64Mi"
+          }
+          limits = {
+            cpu    = "200m"
+            memory = "128Mi"
+          }
+        }
+      }
+      serviceAccounts = {
+        backend = {
+          create = false
+          name   = local.backend_ksa
+        }
+        recommendation = {
+          create = false
+          name   = local.recommendation_ksa
+        }
+        seed = {
+          create = false
+          name   = local.seed_ksa
+        }
+      }
+      externalDatabase = {
+        enabled        = true
+        connectionName = data.terraform_remote_state.foundation.outputs.sql_connection_name
+      }
+      secrets = {
+        create         = false
+        existingSecret = "philobiblus-secrets"
+      }
+      gcpSecrets = {
+        enabled           = true
+        includeImgbb      = var.include_imgbb_secret
+        projectId         = var.project_id
+        databaseUrlSecret = data.terraform_remote_state.foundation.outputs.database_url_secret_id
+        jwtSecret         = data.terraform_remote_state.foundation.outputs.jwt_secret_id
+        imgbbApiSecret    = data.terraform_remote_state.foundation.outputs.imgbb_api_secret_id
+      }
+      ingress = {
+        enabled = false
+      }
+      gateway = {
+        enabled     = true
+        className   = "gke-l7-global-external-managed"
+        addressName = data.terraform_remote_state.platform.outputs.gateway_address_name
+        host        = var.gateway_host != "" ? var.gateway_host : try(data.terraform_remote_state.platform.outputs.api_hostname, "")
+        https = {
+          enabled            = var.gateway_https_enabled
+          certificateMapName = var.gateway_certificate_map_name != "" ? var.gateway_certificate_map_name : try(data.terraform_remote_state.platform.outputs.api_certificate_map_name, "")
+        }
+        httpToHttpsRedirect = var.gateway_http_to_https_redirect
+        backendPolicy = {
+          enabled        = try(data.terraform_remote_state.platform.outputs.cloud_armor_security_policy_name, "") != ""
+          securityPolicy = try(data.terraform_remote_state.platform.outputs.cloud_armor_security_policy_name, "")
+          timeoutSeconds = 30
+          logging = {
+            enabled    = true
+            sampleRate = 1000000
+          }
+        }
+      }
+      networkPolicy = {
+        enabled                    = true
+        defaultDenyIngress         = true
+        defaultDenyEgress          = false
+        managedPrometheusNamespace = "gke-gmp-system"
+      }
+      monitoring = {
+        serviceMonitor = {
+          enabled = false
+        }
+        prometheusRule = {
+          enabled = false
+        }
+        podMonitoring = {
+          enabled  = true
+          interval = "30s"
+        }
+      }
+      tests = {
+        enabled = true
+      }
+    })
+  ]
+
+  depends_on = [
+    google_service_account_iam_member.backend_workload_identity,
+    google_service_account_iam_member.seed_workload_identity,
+    google_service_account_iam_member.recommendation_workload_identity,
+    kubernetes_limit_range_v1.app,
+    kubernetes_resource_quota_v1.app,
+    kubernetes_service_account_v1.backend,
+    kubernetes_service_account_v1.recommendation,
+    kubernetes_service_account_v1.seed,
+  ]
+}

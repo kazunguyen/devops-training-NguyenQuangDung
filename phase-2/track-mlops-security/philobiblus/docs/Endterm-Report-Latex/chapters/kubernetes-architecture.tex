@@ -1,0 +1,100 @@
+\definecolor{k8cleanInk}{HTML}{243447}
+\definecolor{k8cleanCluster}{HTML}{64748B}
+\definecolor{k8cleanAppStroke}{HTML}{2563EB}
+\definecolor{k8cleanAppFill}{HTML}{EFF6FF}
+\definecolor{k8cleanOpsStroke}{HTML}{7C3AED}
+\definecolor{k8cleanOpsFill}{HTML}{F5F3FF}
+\definecolor{k8cleanRuntime}{HTML}{1D4ED8}
+\definecolor{k8cleanControl}{HTML}{C2410C}
+\definecolor{k8cleanArtifact}{HTML}{15803D}
+\definecolor{k8cleanExternalFill}{HTML}{F8FAFC}
+\definecolor{k8cleanExternalStroke}{HTML}{475569}
+
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  x=1cm,y=1cm,
+  >=latex,
+  font=\scriptsize\sffamily,
+  every node/.style={text=k8cleanInk},
+  box/.style={draw=k8cleanInk, line width=0.75pt, rounded corners=3pt, align=center, inner sep=5pt, minimum height=9.2mm},
+  app/.style={box, fill=k8cleanAppFill, draw=k8cleanAppStroke},
+  ops/.style={box, fill=k8cleanOpsFill, draw=k8cleanOpsStroke},
+  external/.style={box, fill=k8cleanExternalFill, draw=k8cleanExternalStroke},
+  runtimeedge/.style={->, line width=1.05pt, draw=k8cleanRuntime},
+  controledge/.style={->, line width=0.95pt, draw=k8cleanControl, dashed},
+  artifactedge/.style={->, line width=1.0pt, draw=k8cleanArtifact},
+  edgeLabel/.style={font=\scriptsize\sffamily, fill=white, inner sep=2pt, align=center}
+]
+
+% Overall cluster and namespace boundaries.
+\draw[draw=k8cleanCluster, line width=1.15pt, rounded corners=7pt]
+  (0,0.25) rectangle (20,11.6);
+\node[font=\bfseries\large\sffamily, anchor=west] at (0.5,11.15)
+  {GKE Autopilot Cluster};
+
+\draw[draw=k8cleanAppStroke, line width=1.0pt, rounded corners=6pt]
+  (0.5,3.6) rectangle (7.6,10.55);
+\node[font=\bfseries\small\sffamily, anchor=west, text=k8cleanAppStroke]
+  at (0.8,10.15) {namespace \texttt{philobiblus}};
+
+\draw[draw=k8cleanOpsStroke, line width=1.0pt, rounded corners=6pt]
+  (12.25,3.6) rectangle (19.5,10.55);
+\node[font=\bfseries\small\sffamily, anchor=west, text=k8cleanOpsStroke]
+  at (12.55,10.15) {namespace \texttt{philobiblus-mlops}};
+
+% Application components.
+\node[app, minimum width=2.65cm] (gateway) at (2.0,8.55)
+  {GKE Gateway /\\HTTPRoute\\\scriptsize API entrypoint};
+\node[app, minimum width=2.55cm] (backend) at (5.75,8.55)
+  {Backend\\\scriptsize FastAPI, nghiệp vụ};
+\node[app, minimum width=2.45cm] (redis) at (2.0,6.05)
+  {Redis Cache\\\scriptsize cache, rate limit};
+\node[app, minimum width=3.0cm] (recommendation) at (5.75,6.05)
+  {Recommendation\\Service\\\scriptsize TF--IDF, :8080};
+
+% MLOps components.
+\node[ops, minimum width=2.65cm] (mlflow) at (14.25,8.55)
+  {MLflow\\\scriptsize tracking, registry};
+\node[ops, minimum width=2.85cm] (trainer) at (17.0,6.05)
+  {Retrain CronJob\\\scriptsize train, evaluate, promote};
+
+% Shared resources outside the namespaces.
+\node[external, minimum width=3.25cm] (sql) at (3.2,1.45)
+  {Cloud SQL PostgreSQL\\\scriptsize application data};
+\node[external, minimum width=3.75cm] (gcs) at (10.0,1.45)
+  {GCS Artifact Storage\\\scriptsize model, snapshot, release};
+\node[external, minimum width=3.25cm] (monitoring) at (16.75,1.45)
+  {Cloud Monitoring\\\scriptsize logs, metrics, alerts};
+
+% Runtime flow.
+\draw[runtimeedge] (gateway.east) -- (backend.west);
+\draw[runtimeedge] (backend.south west) -- (redis.north east);
+\node[edgeLabel] at (3.75,7.45) {cache};
+\draw[runtimeedge] (backend.south) -- (recommendation.north);
+\node[edgeLabel] at (6.2,7.3) {gợi ý};
+
+% MLOps flow.
+\draw[controledge] (trainer.north west) -- (mlflow.south east);
+\node[edgeLabel] at (15.45,7.55) {run / metric};
+\draw[controledge] (trainer.west) -- (recommendation.east);
+\node[edgeLabel] at (10.1,6.48) {validation / promotion};
+
+% Data and artifact flow.
+\draw[controledge] (backend.south west) -- (3.9,7.75) -- (3.9,2.35) -- (sql.north);
+\node[edgeLabel] at (3.55,3.85) {dữ liệu ứng dụng};
+\draw[artifactedge] (trainer.south west) -- (gcs.north east);
+\node[edgeLabel] at (13.0,3.65) {model / release};
+\draw[artifactedge] (gcs.north west) -- (recommendation.south east);
+\node[edgeLabel] at (8.5,3.35) {tải model};
+\draw[controledge] (trainer.south east) -- (monitoring.north east);
+\node[edgeLabel] at (18.15,3.45) {logs / metrics};
+
+% Legend.
+\node[anchor=west, font=\scriptsize\sffamily] at (0.7,0.58)
+  {\textcolor{k8cleanRuntime}{\rule[0.5ex]{0.65cm}{1pt}} runtime};
+\node[anchor=west, font=\scriptsize\sffamily] at (5.3,0.58)
+  {\textcolor{k8cleanControl}{\rule[0.5ex]{0.65cm}{1pt}} MLOps control};
+\node[anchor=west, font=\scriptsize\sffamily] at (10.8,0.58)
+  {\textcolor{k8cleanArtifact}{\rule[0.5ex]{0.65cm}{1pt}} artifact/model};
+\end{tikzpicture}%
+}

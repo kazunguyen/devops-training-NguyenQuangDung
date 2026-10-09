@@ -1,0 +1,44 @@
+name: Mirror Philobiblus to Personal Repo
+
+on:
+  push:
+    branches:
+      - main
+      - philobiblus
+    paths:
+      - 'phase-2/track-mlops-security/philobiblus/**'
+      - '.github/workflows/mirror-philobiblus.yaml'
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Root Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+          persist-credentials: false
+      
+      - name: Cấu hình Git Identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Push Philobiblus bằng Git Subtree
+        env:
+          TARGET_REPO_URL: https://kazunguyen:${{ secrets.PHILOBIBLUS_REPO_PAT }}@github.com/kazunguyen/philobiblus.git
+        run: |
+          echo "Bắt đầu đồng bộ thư mục philobiblus..."
+          
+          CURRENT_BRANCH=${GITHUB_REF#refs/heads/}
+          
+          # Map branch "philobiblus" to "main" on target repo
+          if [ "$CURRENT_BRANCH" = "philobiblus" ]; then
+            TARGET_BRANCH="main"
+          else
+            TARGET_BRANCH="$CURRENT_BRANCH"
+          fi
+          
+          git subtree push --prefix=phase-2/track-mlops-security/philobiblus $TARGET_REPO_URL $TARGET_BRANCH
+          
+          echo "Đồng bộ thành công sang nhánh $TARGET_BRANCH!"

@@ -1,0 +1,780 @@
+import secrets
+from datetime import date
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session, joinedload
+
+from app.auth import get_current_user, get_optional_current_user
+from app.catalog_cache import catalog_cache
+from app.database import get_db
+from app.models import (
+    Book,
+    BookReadingProgress,
+    BookStatus,
+    BookVisibility,
+    ReadingHistory,
+    User,
+)
+from app.recommendation_load_shedder import recommendation_load_shedder
+from app.rate_limit import enforce_rate_limit
+from app.schemas import (
+    BookCreate,
+    BookOwnerOut,
+    BookPublicOut,
+    BookReadingProgressOut,
+    BookReadingProgressUpdate,
+    BookRecommendationOut,
+    BookRecommendationsOut,
+    BookStatsOut,
+    BookUpdate,
+)
+from app.services.recommendation_client import (
+    fetch_profile_recommendations,
+    fetch_recommendations,
+    recommendations_enabled,
+)
+
+router = APIRouter(
+    prefix="/api/books",
+    tags=["Books"],
+)
+
+
+def _enrich_public_books(
+    db: Session,
+    books: List[Book],
+    current_user: Optional[User] = None,
+) -> List[Book]:
+    """Attach aggregate and viewer-specific reading data to public responses."""
+    if not books:
+        return books
+
+    book_ids = [book.id for book in books]
+    progress_counts = dict(
+        db.query(BookReadingProgress.book_id, func.count(BookReadingProgress.id))
+        .filter(
+            BookReadingProgress.book_id.in_(book_ids),
+            BookReadingProgress.status == BookStatus.READING,
+        )
+        .group_by(BookReadingProgress.book_id)
+        .all()
+    )
+    viewer_progress = {}
+    if current_user:
+        viewer_progress = {
+            progress.book_id: progress
+            for progress in (
+                db.query(BookReadingProgress)
+                .filter(
+                    BookReadingProgress.book_id.in_(book_ids),
+                    BookReadingProgress.user_id == current_user.id,
+                )
+                .all()
+            )
+        }
+
+    for book in books:
+        owner_is_reading = book.status == BookStatus.READING or book.status == "reading"
+        book.active_reader_count = progress_counts.get(book.id, 0) + int(owner_is_reading)
+        book.my_reading_progress = viewer_progress.get(book.id)
+
+    return books
+
+
+def _get_reader_accessible_book(
+    db: Session,
+    book_id: int,
+    share_token: Optional[str] = None,
+) -> Book:
+    """Resolve a public book, or a restricted book with its exact share token."""
+    visibility_filter = Book.visibility == BookVisibility.PUBLIC
+    if share_token:
+        visibility_filter = or_(
+            visibility_filter,
+            and_(
+                Book.visibility == BookVisibility.RESTRICTED,
+                Book.share_token == share_token,
+            ),
+        )
+
+    book = db.query(Book).filter(Book.id == book_id, visibility_filter).first()
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found",
+        )
+    return book
+
+
+@router.get(
+    "",
+    response_model=List[BookOwnerOut],
+    summary="Get book list of current user with filtering and search",
+)
+def get_books(
+    status_filter: Optional[BookStatus] = Query(None, alias="status", description="Filter by reading status"),
+    genre: Optional[str] = Query(None, description="Filter by genre"),
+    search: Optional[str] = Query(None, description="Search by title or author"),
+    skip: int = Query(0, ge=0, description="Number of records to skip (pagination)"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to retrieve"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Query list of books owned by the authenticated user."""
+    query = db.query(Book).filter(Book.user_id == current_user.id)
+
+    # Apply status filter if specified
+    if status_filter:
+        query = query.filter(Book.status == status_filter)
+
+    # Apply genre filter if specified
+    if genre:
+        query = query.filter(Book.genre.ilike(f"%{genre}%"))
+
+    # Apply search filter across title and author
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Book.title.ilike(search_term),
+                Book.author.ilike(search_term),
+            )
+        )
+
+    # Order by newest first and paginate
+    books = query.order_by(Book.created_at.desc()).offset(skip).limit(limit).all()
+    return books
+
+
+@router.post(
+    "",
+    response_model=BookOwnerOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new book",
+)
+def create_book(
+    book_in: BookCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new book record assigned to current user."""
+    book_data = book_in.model_dump()
+    visibility = book_data.get("visibility", BookVisibility.PUBLIC)
+    share_token = secrets.token_urlsafe(32) if visibility == BookVisibility.RESTRICTED else None
+    new_book = Book(**book_data, share_token=share_token, user_id=current_user.id)
+    db.add(new_book)
+    db.commit()
+    db.refresh(new_book)
+    catalog_cache.invalidate()
+    return new_book
+
+@router.get(
+    "/public",
+    response_model=List[BookPublicOut],
+    summary="Get public book list with filtering and search",
+)
+def get_public_books(
+    genre: Optional[str] = Query(None, description="Filter by genre"),
+    search: Optional[str] = Query(None, description="Search by title or author"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum records to retrieve"),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """Query books from all users for the public dashboard."""
+    cache_parameters = {
+        "genre": genre,
+        "search": search,
+        "skip": skip,
+        "limit": limit,
+    }
+    if current_user is None:
+        cached_books = catalog_cache.get(cache_parameters)
+        if cached_books is not None:
+            return cached_books
+
+    query = (
+        db.query(Book)
+        .options(joinedload(Book.owner))
+        .filter(Book.visibility == BookVisibility.PUBLIC)
+    )
+
+    if genre:
+        query = query.filter(Book.genre.ilike(f"%{genre}%"))
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Book.title.ilike(search_term),
+                Book.author.ilike(search_term),
+            )
+        )
+
+    books = query.order_by(Book.created_at.desc()).offset(skip).limit(limit).all()
+    enriched_books = _enrich_public_books(db, books, current_user)
+    if current_user is None:
+        response = [
+            BookPublicOut.model_validate(book).model_dump(mode="json")
+            for book in enriched_books
+        ]
+        catalog_cache.set(cache_parameters, response)
+        return response
+    return enriched_books
+
+
+@router.get(
+    "/shared/{share_token}",
+    response_model=BookPublicOut,
+    summary="Get a restricted book through its share link",
+)
+def get_shared_book(
+    share_token: str,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve a restricted book only when its unguessable share token is supplied."""
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.owner))
+        .filter(
+            Book.share_token == share_token,
+            Book.visibility == BookVisibility.RESTRICTED,
+        )
+        .first()
+    )
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    return _enrich_public_books(db, [book], current_user)[0]
+
+
+@router.get(
+    "/public/{book_id}",
+    response_model=BookPublicOut,
+    summary="Get a public book by ID",
+)
+def get_public_book(
+    book_id: int,
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve details only for books explicitly marked public."""
+    book = (
+        db.query(Book)
+        .options(joinedload(Book.owner))
+        .filter(Book.id == book_id, Book.visibility == BookVisibility.PUBLIC)
+        .first()
+    )
+    if not book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+    return _enrich_public_books(db, [book], current_user)[0]
+
+
+@router.post(
+    "/public/{book_id}/reading-progress",
+    response_model=BookReadingProgressOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Start reading another user's book",
+)
+def start_public_book_reading(
+    book_id: int,
+    share_token: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create or resume the current user's progress for an accessible book."""
+    book = _get_reader_accessible_book(db, book_id, share_token)
+    if book.user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the owner book editor to track this book",
+        )
+
+    progress = (
+        db.query(BookReadingProgress)
+        .filter(
+            BookReadingProgress.book_id == book.id,
+            BookReadingProgress.user_id == current_user.id,
+        )
+        .first()
+    )
+    if progress:
+        progress.status = BookStatus.READING
+        progress.date_finished = None
+    else:
+        progress = BookReadingProgress(
+            book_id=book.id,
+            user_id=current_user.id,
+            status=BookStatus.READING,
+            pages_read=0 if book.pages_total >= 0 else -1,
+        )
+        db.add(progress)
+
+    db.commit()
+    db.refresh(progress)
+    catalog_cache.invalidate()
+    return progress
+
+
+@router.put(
+    "/public/{book_id}/reading-progress",
+    response_model=BookReadingProgressOut,
+    summary="Update personal progress for another user's book",
+)
+def update_public_book_reading_progress(
+    book_id: int,
+    progress_in: BookReadingProgressUpdate,
+    share_token: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update only the authenticated reader's progress for an accessible book."""
+    book = _get_reader_accessible_book(db, book_id, share_token)
+    progress = (
+        db.query(BookReadingProgress)
+        .filter(
+            BookReadingProgress.book_id == book.id,
+            BookReadingProgress.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not progress:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Start reading this book before updating progress",
+        )
+
+    update_data = progress_in.model_dump(exclude_unset=True, exclude_none=True)
+    requested_status = update_data.get("status")
+    if requested_status == BookStatus.WANT_TO_READ:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Reading progress status must be reading, completed, or dropped",
+        )
+    if (
+        "pages_read" in update_data
+        and book.pages_total >= 0
+        and update_data["pages_read"] > book.pages_total
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Pages read cannot exceed the book's total pages",
+        )
+
+    for field, value in update_data.items():
+        setattr(progress, field, value)
+
+    if requested_status == BookStatus.COMPLETED:
+        progress.date_finished = date.today()
+    elif requested_status == BookStatus.READING:
+        progress.date_finished = None
+
+    if update_data:
+        db.add(
+            ReadingHistory(
+                book_id=book.id,
+                user_id=current_user.id,
+                read_on=date.today(),
+                pages_read=progress.pages_read,
+                chapters_read=progress.chapters_read,
+                volume=progress.volume,
+            )
+        )
+
+    db.commit()
+    db.refresh(progress)
+    catalog_cache.invalidate()
+    return progress
+
+
+@router.get(
+    "/stats",
+    response_model=BookStatsOut,
+    summary="Get reading statistics for current user",
+)
+def get_book_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BookStatsOut:
+    """Return aggregated reading statistics for the authenticated user."""
+    books = (
+        db.query(Book)
+        .filter(Book.user_id == current_user.id)
+        .all()
+    )
+
+    status_counts = {
+        book_status.value: 0
+        for book_status in BookStatus
+    }
+
+    for book in books:
+        status_value = (
+            book.status.value
+            if isinstance(book.status, BookStatus)
+            else book.status
+        )
+        status_counts[status_value] = status_counts.get(status_value, 0) + 1
+
+    total_pages = sum(book.pages_total for book in books if book.pages_total >= 0)
+    total_pages_read = sum(book.pages_read for book in books if book.pages_read >= 0)
+    ratings = [
+        book.rating
+        for book in books
+        if book.rating is not None
+    ]
+
+    average_rating = (
+        round(sum(ratings) / len(ratings), 2)
+        if ratings
+        else 0.0
+    )
+    reading_progress = (
+        round(min(total_pages_read / total_pages, 1) * 100, 2)
+        if total_pages
+        else 0.0
+    )
+
+    return BookStatsOut(
+        total_books=len(books),
+        want_to_read=status_counts[BookStatus.WANT_TO_READ.value],
+        reading=status_counts[BookStatus.READING.value],
+        completed=status_counts[BookStatus.COMPLETED.value],
+        dropped=status_counts[BookStatus.DROPPED.value],
+        total_pages=total_pages,
+        total_pages_read=total_pages_read,
+        average_rating=average_rating,
+        reading_progress=reading_progress,
+    )
+
+
+@router.get(
+    "/recommendations/for-me",
+    response_model=BookRecommendationsOut,
+    summary="Get personalized recommendations",
+)
+def get_personal_recommendations(
+    request: Request,
+    limit: int = Query(5, ge=1, le=5),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BookRecommendationsOut:
+    """Return personalized recommendations based on reading progress."""
+    if not recommendations_enabled():
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    if not recommendation_load_shedder.admit().allowed:
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    enforce_rate_limit(
+        request=request,
+        scope="recommendation",
+        limit=30,
+        window_seconds=60,
+        identity=f"user:{current_user.id}",
+    )
+    owned_ids = {
+        row[0]
+        for row in db.query(Book.id).filter(
+            Book.user_id == current_user.id,
+            Book.status == BookStatus.READING,
+        )
+    }
+    followed_ids = {
+        row[0]
+        for row in db.query(BookReadingProgress.book_id).filter(
+            BookReadingProgress.user_id == current_user.id,
+            BookReadingProgress.status == BookStatus.READING,
+        )
+    }
+    source_ids = sorted(owned_ids | followed_ids)
+
+    ranked_items = fetch_profile_recommendations(book_ids=source_ids, limit=limit) if source_ids else []
+
+    candidate_ids = []
+    for item in ranked_items:
+        candidate_ids.append(item.book_id)
+
+    public_books_by_id = {}
+    if candidate_ids:
+        public_books = (
+            db.query(Book)
+            .filter(
+                Book.id.in_(candidate_ids),
+                Book.visibility == BookVisibility.PUBLIC,
+            )
+            .all()
+        )
+        public_books_by_id = {book.id: book for book in public_books}
+
+    model_books = [
+        (public_books_by_id[item.book_id], item.score)
+        for item in ranked_items
+        if item.book_id in public_books_by_id and item.book_id not in source_ids
+    ]
+    
+    if model_books:
+        _enrich_public_books(
+            db,
+            [book for book, _score in model_books[:limit]],
+            current_user,
+        )
+        return BookRecommendationsOut(
+            source="model",
+            model_version=ranked_items[0].model_version,
+            books=[
+                BookRecommendationOut(
+                    **BookPublicOut.model_validate(book).model_dump(),
+                    score=score,
+                )
+                for book, score in model_books[:limit]
+            ],
+        )
+
+    fallback_books = (
+        db.query(Book)
+        .filter(
+            Book.visibility == BookVisibility.PUBLIC,
+            ~Book.id.in_(source_ids) if source_ids else True,
+        )
+        .order_by(Book.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    _enrich_public_books(db, fallback_books, current_user)
+
+    return BookRecommendationsOut(
+        source="catalog_fallback",
+        model_version=None,
+        books=[
+            BookRecommendationOut(
+                **BookPublicOut.model_validate(book).model_dump(),
+                score=None,
+            )
+            for book in fallback_books
+        ],
+    )
+
+
+@router.get(
+    "/{book_id}",
+    response_model=BookOwnerOut,
+    summary="Get book details by ID",
+)
+def get_book(
+    book_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve book details and verify ownership."""
+    book = (
+        db.query(Book)
+        .filter(Book.id == book_id, Book.user_id == current_user.id)
+        .first()
+    )
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found",
+        )
+    return book
+
+
+@router.put(
+    "/{book_id}",
+    response_model=BookOwnerOut,
+    summary="Update book details or reading progress",
+)
+def update_book(
+    book_id: int,
+    book_in: BookUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update specified fields of a book record (patch update)."""
+    book = (
+        db.query(Book)
+        .filter(Book.id == book_id, Book.user_id == current_user.id)
+        .first()
+    )
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found",
+        )
+
+    # Update only provided non-None fields
+    update_data = book_in.model_dump(exclude_unset=True)
+    previous_progress = {
+        field: getattr(book, field)
+        for field in ("pages_read", "chapters_read", "volume")
+    }
+    if "visibility" in update_data:
+        visibility = update_data["visibility"]
+        if visibility == BookVisibility.RESTRICTED:
+            update_data["share_token"] = book.share_token or secrets.token_urlsafe(32)
+        else:
+            update_data["share_token"] = None
+    for field, value in update_data.items():
+        setattr(book, field, value)
+
+    progress_changed = any(
+        getattr(book, field) != previous_progress[field]
+        for field in previous_progress
+    )
+    if progress_changed:
+        db.add(
+            ReadingHistory(
+                book_id=book.id,
+                user_id=current_user.id,
+                read_on=date.today(),
+                pages_read=book.pages_read,
+                chapters_read=book.chapters_read,
+                volume=book.volume,
+            )
+        )
+
+    db.commit()
+    db.refresh(book)
+    catalog_cache.invalidate()
+    return book
+
+
+@router.delete(
+    "/{book_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a book from library",
+)
+def delete_book(
+    book_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete book record if owned by current user."""
+    book = (
+        db.query(Book)
+        .filter(Book.id == book_id, Book.user_id == current_user.id)
+        .first()
+    )
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found",
+        )
+
+    db.delete(book)
+    db.commit()
+    catalog_cache.invalidate()
+    return None
+
+@router.get(
+    "/public/{book_id}/recommendations",
+    response_model=BookRecommendationsOut,
+    summary="Get recommendations for a public book",
+)
+def get_public_book_recommendations(
+    request: Request,
+    book_id: int,
+    limit: int = Query(5, ge=1, le=5),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> BookRecommendationsOut:
+    """Return only public recommendations for one public source book."""
+    if not recommendations_enabled():
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    if not recommendation_load_shedder.admit().allowed:
+        return BookRecommendationsOut(source="unavailable", model_version=None, books=[])
+
+    enforce_rate_limit(
+        request=request,
+        scope="public_recommendation",
+        limit=60,
+        window_seconds=60,
+        identity=f"user:{current_user.id}" if current_user else None,
+    )
+    source_book = (
+        db.query(Book)
+        .filter(
+            Book.id == book_id,
+            Book.visibility == BookVisibility.PUBLIC,
+        )
+        .first()
+    )
+    if not source_book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Book not found",
+        )
+
+    ranked_items = fetch_recommendations(book_id=book_id, limit=limit)
+    seen_ids = {source_book.id}
+    candidate_ids = []
+
+    for item in ranked_items:
+        if item.book_id not in seen_ids:
+            candidate_ids.append(item.book_id)
+            seen_ids.add(item.book_id)
+
+    public_books_by_id = {}
+    if candidate_ids:
+        public_books = (
+            db.query(Book)
+            .filter(
+                Book.id.in_(candidate_ids),
+                Book.visibility == BookVisibility.PUBLIC,
+            )
+            .all()
+        )
+        public_books_by_id = {book.id: book for book in public_books}
+
+    model_books = [
+        (public_books_by_id[item.book_id], item.score)
+        for item in ranked_items
+        if item.book_id in public_books_by_id
+    ]
+
+    if model_books:
+        _enrich_public_books(
+            db,
+            [book for book, _score in model_books[:limit]],
+            current_user,
+        )
+        return BookRecommendationsOut(
+            source="model",
+            model_version=ranked_items[0].model_version,
+            books=[
+                BookRecommendationOut(
+                    **BookPublicOut.model_validate(book).model_dump(),
+                    score=score,
+                )
+                for book, score in model_books[:limit]
+            ],
+        )
+
+    fallback_books = (
+        db.query(Book)
+        .filter(
+            Book.id != source_book.id,
+            Book.visibility == BookVisibility.PUBLIC,
+            Book.genre == source_book.genre,
+        )
+        .order_by(Book.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    _enrich_public_books(db, fallback_books, current_user)
+
+    return BookRecommendationsOut(
+        source="genre_fallback",
+        model_version=None,
+        books=[
+            BookRecommendationOut(
+                **BookPublicOut.model_validate(book).model_dump(),
+                score=None,
+            )
+            for book in fallback_books
+        ],
+    )

@@ -1,0 +1,42 @@
+**/.pytest_cache/
+node_modules/
+package-lock.json
+.env
+values.local.yaml
+rendered.yaml
+dist/
+ml/.venv
+ml/tracking/
+.venv-cache-pool/
+artifacts/load-tests/
+monitor.log
+backend-netpol.yaml
+load-test-pod.yaml
+rec-netpol.yaml
+run-test.sh
+
+# LaTeX build outputs
+*.aux
+*.bbl
+*.blg
+*.lof
+*.log
+*.out
+*.toc
+
+# Terraform local state and provider cache
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Local deployment outputs and account-specific image references
+docs/deployments/gcp-cloud-run/DEPLOYMENT_IMAGE_DIGESTS.md
+
+# Local GKE credentials, generated configuration, and progress logs
+scripts/gcp-gke/.local/
+
+# Office / temporary files
+~$*
+*.tmp

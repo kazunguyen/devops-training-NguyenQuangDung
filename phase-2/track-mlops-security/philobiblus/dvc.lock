@@ -1,0 +1,58 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python ml/src/prepare.py --input ml/data/raw/public_books.csv --output 
+      ml/data/processed/books_features.csv
+    deps:
+    - path: ml/data/raw/public_books.csv
+      hash: md5
+      md5: ec26a2a22b812234e6bafe073ca254a9
+      size: 25053
+      isexec: true
+    - path: ml/src/prepare.py
+      hash: md5
+      md5: 7d3d3b636b2b9354766b1fa79274fcff
+      size: 1270
+      isexec: true
+    outs:
+    - path: ml/data/processed/books_features.csv
+      hash: md5
+      md5: 853a3de59c6e746b5668574ecbd875aa
+      size: 43155
+      isexec: true
+  train:
+    cmd: python ml/src/train.py --input ml/data/processed/books_features.csv 
+      --params ml/params.yaml --model-output ml/models/tfidf_recommender.joblib 
+      --metrics-output ml/reports/train_metrics.json
+    deps:
+    - path: ml/data/processed/books_features.csv
+      hash: md5
+      md5: 853a3de59c6e746b5668574ecbd875aa
+      size: 43155
+      isexec: true
+    - path: ml/src/train.py
+      hash: md5
+      md5: e291bbe0c303c5e97174418fe3e8898a
+      size: 3298
+      isexec: true
+    params:
+      ml/params.yaml:
+        train.experiment_name: philobiblus-content-recommender
+        train.include_tags: true
+        train.min_df: 1
+        train.model_version: tfidf-with-tags-v1
+        train.ngram_range:
+        - 1
+        - 2
+        train.top_k: 5
+    outs:
+    - path: ml/models/tfidf_recommender.joblib
+      hash: md5
+      md5: 786cdf332bb2b40f7c65a6f4c14da279
+      size: 150918
+      isexec: true
+    - path: ml/reports/train_metrics.json
+      hash: md5
+      md5: a9c8488937f377a70f547227e21690dd
+      size: 99
+      isexec: true

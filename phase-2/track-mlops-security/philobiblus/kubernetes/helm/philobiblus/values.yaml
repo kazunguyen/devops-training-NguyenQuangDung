@@ -1,0 +1,282 @@
+# This chart deliberately ships without secrets.  Create the Secret named below
+# before installing, or use a private values file with secrets.create=true.
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+backend:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  image:
+    repository: kazu912/philobiblus-backend
+    tag: latest
+    digest: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: ""
+  bindHost: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  accessTokenExpireMinutes: 1440
+  allowedOrigins: ""
+  apiDocs:
+    enabled: true
+  rateLimit:
+    enabled: false
+    trustProxyHeaders: false
+    fallbackPodCount: 6
+  recommendationsEnabled: true
+  recommendationLoadShedding:
+    enabled: true
+    maxRequests: 12
+    windowSeconds: 10
+    cooldownSeconds: 30
+  uploads:
+    imgbbTimeoutSeconds: 15
+    maxConcurrency: 2
+  databasePool:
+    size: 3
+    maxOverflow: 2
+    timeoutSeconds: 10
+    recycleSeconds: 1800
+  catalogCache:
+    ttlSeconds: 30
+  observability:
+    tracing:
+      enabled: false
+      endpoint: ""
+      serviceName: philobiblus-backend
+  probe:
+    startupFailureThreshold: 12
+    startupPeriodSeconds: 5
+    readinessInitialDelaySeconds: 10
+    readinessPeriodSeconds: 5
+    readinessTimeoutSeconds: 5
+    readinessFailureThreshold: 3
+    livenessInitialDelaySeconds: 30
+    livenessPeriodSeconds: 10
+    livenessTimeoutSeconds: 5
+    livenessFailureThreshold: 6
+
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: kazu912/philobiblus-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  apiUrl: ""
+  grafanaUrl: ""
+  devHost: ""
+  devPort: ""
+  probe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: ""
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+seed:
+  enabled: true
+  runOnUpgrade: true
+  backoffLimit: 3
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+secrets:
+  # With the default setting, create this Secret out of band. It must include
+  # POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB and SECRET_KEY.
+  existingSecret: philobiblus-secrets
+  create: false
+  postgresUser: ""
+  postgresPassword: ""
+  postgresDatabase: ""
+  jwtSecret: ""
+  imgbbApi: ""
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""
+  annotations: {}
+
+tests:
+  enabled: true
+
+recommendation:
+  enabled: true
+  replicaCount: 2
+  progressDeadlineSeconds: 300
+  # Empty prevents a later Helm upgrade from replacing the version patched by
+  # promote.py. Bootstrap model-release before enabling the fetcher rollout.
+  initialModelVersion: ""
+  image:
+    repository: kazu912/philobiblus-recommendation
+    tag: latest
+    digest: ""
+    pullPolicy: IfNotPresent
+  fetcherImage:
+    repository: kazu912/philobiblus-model-fetcher
+    tag: latest
+    digest: ""
+  service:
+    port: 8080
+  modelPath: /app/model/tfidf_recommender.joblib
+  timeoutSeconds: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  probe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+redis:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: redis
+    tag: 7.4-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+serviceAccounts:
+  backend:
+    create: true
+    name: ""
+    annotations: {}
+  recommendation:
+    create: true
+    name: ""
+    annotations: {}
+  seed:
+    create: true
+    name: ""
+    annotations: {}
+
+externalDatabase:
+  enabled: false
+  connectionName: ""
+  proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.25.4
+    privateIp: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+gcpSecrets:
+  enabled: false
+  includeImgbb: false
+  projectId: ""
+  databaseUrlSecret: ""
+  jwtSecret: ""
+  imgbbApiSecret: ""
+
+gateway:
+  enabled: false
+  className: gke-l7-global-external-managed
+  addressName: ""
+  host: ""
+  https:
+    enabled: false
+    certificateMapName: ""
+  httpToHttpsRedirect: false
+  backendPolicy:
+    enabled: false
+    securityPolicy: ""
+    timeoutSeconds: 30
+    logging:
+      enabled: true
+      sampleRate: 1000000
+
+networkPolicy:
+  enabled: false
+  defaultDenyIngress: true
+  defaultDenyEgress: false
+  managedPrometheusNamespace: gke-gmp-system
+  recommendationTrainerNamespace: philobiblus-mlops
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+  prometheusRule:
+    enabled: false
+    prometheusRelease: monitoring
+  podMonitoring:
+    enabled: false
+    interval: 30s
+  tracing:
+    enabled: false
+    exporter: debug
+    collector:
+      image: otel/opentelemetry-collector-contrib:0.110.0
+      serviceAccount:
+        create: true
+        name: ""
+        annotations: {}
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi

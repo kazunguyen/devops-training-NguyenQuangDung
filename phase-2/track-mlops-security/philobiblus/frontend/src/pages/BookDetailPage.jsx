@@ -1,0 +1,633 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+    ArrowLeft,
+    MessageSquare,
+    Pencil,
+    Send,
+    Trash2,
+} from 'lucide-react';
+import { bookService } from '../services/bookServices';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { useAuth } from '../context/AuthContext';
+import { useViewMode } from '../context/ViewModeContext';
+import { reviewService } from '../services/reviewServices';
+import { adminService } from '../services/adminServices';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import StarRating from '../components/ui/StarRating';
+import { getBookStatusLabel } from '@/lib/bookStatus';
+import { getPublicationStatusLabel } from '@/lib/publicationStatus';
+
+const BookDetailPage = () => {
+    const { id } = useParams();
+    const navigate = useNavigate();
+
+    const [book, setBook] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const { isAuthenticated, currentUser } = useAuth();
+    const { viewMode } = useViewMode();
+    const isAdminView = Boolean(currentUser?.is_admin && viewMode === 'admin');
+    const [deletingReviewId, setDeletingReviewId] = useState(null);
+
+    const [reviews, setReviews] = useState([]);
+    const [reviewForm, setReviewForm] = useState({
+        rating: '',
+        comment: '',
+    });
+    const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [reviewError, setReviewError] = useState(null);
+
+    const [readingHistory, setReadingHistory] = useState([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [deletingHistoryId, setDeletingHistoryId] = useState(null);
+    const [isClearingHistory, setIsClearingHistory] = useState(false);
+
+    useEffect(() => {
+        const loadBookPage = async () => {
+            try {
+                setIsLoading(true);
+                setIsLoadingReviews(true);
+                setError(null);
+                setReviewError(null);
+
+                if (isAdminView) {
+                    const adminDetail = await adminService.getBookDetail(id);
+                    setBook(adminDetail.book);
+                    setReviews(adminDetail.reviews);
+                    setReadingHistory(adminDetail.reading_history);
+                } else {
+                    const [bookData, reviewData, historyData] = await Promise.all([
+                        bookService.getBookById(id),
+                        reviewService.getReviews(id),
+                        bookService.getReadingHistory(id),
+                    ]);
+
+                    setBook(bookData);
+                    setReviews(reviewData);
+                    setReadingHistory(historyData);
+                }
+            } catch (loadError) {
+                setError(loadError.message);
+            } finally {
+                setIsLoading(false);
+                setIsLoadingReviews(false);
+                setIsLoadingHistory(false);
+            }
+        };
+
+        loadBookPage();
+    }, [id, isAdminView]);
+
+    const handleDelete = async () => {
+        if (!window.confirm('Are you sure you want to delete this book?')) {
+            return;
+        }
+
+        try {
+            await bookService.deleteBook(id);
+            navigate('/books');
+        } catch (deleteError) {
+            window.alert(`Failed to delete: ${deleteError.message}`);
+        }
+    };
+
+    const handleDeleteHistoryEntry = async (historyId) => {
+        if (!window.confirm('Delete this reading history entry?')) {
+            return;
+        }
+
+        setDeletingHistoryId(historyId);
+        try {
+            await bookService.deleteReadingHistoryEntry(id, historyId);
+            setReadingHistory((previous) =>
+                previous.filter((entry) => entry.id !== historyId),
+            );
+        } catch (deleteError) {
+            window.alert(`Failed to delete history entry: ${deleteError.message}`);
+        } finally {
+            setDeletingHistoryId(null);
+        }
+    };
+
+    const handleClearReadingHistory = async () => {
+        if (!window.confirm('Delete all reading history entries?')) {
+            return;
+        }
+
+        setIsClearingHistory(true);
+        try {
+            await bookService.deleteAllReadingHistory(id);
+            setReadingHistory([]);
+        } catch (deleteError) {
+            window.alert(`Failed to clear reading history: ${deleteError.message}`);
+        } finally {
+            setIsClearingHistory(false);
+        }
+    };
+
+    const handleReviewChange = (event) => {
+        const { name, value } = event.target;
+
+        setReviewForm((previous) => ({
+            ...previous,
+            [name]: value,
+        }));
+    };
+
+    const handleReviewSubmit = async (event) => {
+        event.preventDefault();
+        if (!reviewForm.rating) {
+            setReviewError('Please select a rating.');
+            return;
+        }
+        setIsSubmittingReview(true);
+        setReviewError(null);
+
+        try {
+            const createdReview = await reviewService.createReview(id, {
+                rating: Number(reviewForm.rating),
+                comment: reviewForm.comment || null,
+            });
+
+            setReviews((previous) => [createdReview, ...previous]);
+            setReviewForm({
+                rating: '',
+                comment: '',
+            });
+        } catch (submitError) {
+            setReviewError(submitError.message);
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
+
+    const handleDeleteReview = async (reviewId) => {
+        if (!window.confirm('Are you sure you want to delete this review?')) {
+            return;
+        }
+
+        setDeletingReviewId(reviewId);
+        setReviewError(null);
+
+        try {
+            await reviewService.deleteReview(reviewId);
+
+            setReviews((previous) =>
+                previous.filter((review) => review.id !== reviewId),
+            );
+        } catch (deleteError) {
+            setReviewError(deleteError.message);
+        } finally {
+            setDeletingReviewId(null);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-muted/30">
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                    Loading book details...
+                </p>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-muted/30">
+                <div
+                    className="mx-auto max-w-3xl px-4 py-12 text-center text-sm text-destructive"
+                    role="alert"
+                >
+                    Error: {error}
+                </div>
+            </div>
+        );
+    }
+
+    if (!book) {
+        return (
+            <div className="min-h-screen bg-muted/30">
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                    Book not found.
+                </p>
+            </div>
+        );
+    }
+
+    const progress =
+        book.pages_total > 0 && book.pages_read >= 0
+            ? Math.min((book.pages_read / book.pages_total) * 100, 100)
+            : 0;
+    const hasVolume = book.volume >= 0;
+    const hasPagesRead = book.pages_read >= 0;
+    const hasPagesTotal = book.pages_total >= 0;
+    const hasChaptersRead = book.chapters_read >= 0;
+    const hasProgress = hasPagesRead || hasPagesTotal || hasChaptersRead;
+
+    const bookTags =
+        Array.isArray(book.tags) && book.tags.length > 0
+            ? book.tags
+            : book.genre
+                ? [book.genre]
+                : [];
+    const historyEntries = book.date_started
+        ? [
+            {
+                id: 'started-reading',
+                isStartEntry: true,
+                read_on: book.date_started,
+            },
+            ...readingHistory,
+        ]
+        : readingHistory;
+    const shareUrl = book.share_token
+        ? `${window.location.origin}/shared/books/${book.share_token}`
+        : '';
+
+    return (
+        <div className="min-h-screen bg-muted/30">
+
+            <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+                <Button
+                    variant="ghost"
+                    className="mb-4"
+                    onClick={() => navigate(isAdminView ? '/admin/books' : '/books')}
+                >
+                    <ArrowLeft />
+                    Back to library
+                </Button>
+
+                <Card>
+                    <CardHeader className="border-b">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <CardTitle className="text-2xl">
+                                    {book.title}
+                                </CardTitle>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    by {book.author}
+                                </p>
+                            </div>
+
+                            <div className={isAdminView ? 'hidden' : 'flex gap-2'}>
+                                <Button
+                                    variant="outline"
+                                    onClick={() =>
+                                        navigate(`/books/${id}/edit`)
+                                    }
+                                >
+                                    <Pencil />
+                                    Edit
+                                </Button>
+
+                                <Button
+                                    variant="destructive"
+                                    onClick={handleDelete}
+                                >
+                                    <Trash2 />
+                                    Delete
+                                </Button>
+                            </div>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="space-y-6 pt-6">
+                        <div className="flex flex-wrap gap-2">
+                            {bookTags.length > 0 ? (
+                                bookTags.map((tag) => (
+                                    <Badge key={tag} variant="outline">
+                                        {tag}
+                                    </Badge>
+                                ))
+                            ) : (
+                                <Badge variant="outline">No tags</Badge>
+                            )}
+                            <Badge variant="outline">
+                                {getBookStatusLabel(book.status)}
+                            </Badge>
+                            <Badge variant="outline">
+                                {getPublicationStatusLabel(book.publication_status)}
+                            </Badge>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            {hasVolume && (
+                            <div>
+                                <p className="text-sm text-muted-foreground">
+                                    Volume
+                                </p>
+                                <p className="font-medium">
+                                    {book.volume}
+                                </p>
+                            </div>
+                            )}
+
+                            <div>
+                                <p className="text-sm text-muted-foreground">
+                                    Rating
+                                </p>
+                                <p className="font-medium">
+                                    {book.rating
+                                        ? '⭐'.repeat(book.rating)
+                                        : 'Unrated'}
+                                </p>
+                            </div>
+
+                            {book.date_started && (
+                                <div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Started reading
+                                    </p>
+                                    <p className="font-medium">
+                                        {new Date(`${book.date_started}T00:00:00`).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {hasProgress && (
+                        <section className="space-y-3 rounded-lg bg-muted/50 p-4">
+                            <div className="flex items-center justify-between">
+                                <p className="font-medium">
+                                    Reading progress
+                                </p>
+                                {hasPagesRead && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Pages read: {book.pages_read}{hasPagesTotal && ` / ${book.pages_total}`}
+                                    </p>
+                                )}
+                                {hasPagesTotal && !hasPagesRead && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Total pages: {book.pages_total}
+                                    </p>
+                                )}
+                                {hasChaptersRead && (
+                                    <p className="text-sm text-muted-foreground">
+                                        {book.chapters_read} chapters read
+                                    </p>
+                                )}
+                            </div>
+                            {book.pages_total > 0 && hasPagesRead && (
+                            <Progress
+                                value={progress}
+                                indicatorClassName={
+                                    book.status === 'dropped'
+                                        ? 'bg-destructive'
+                                        : progress >= 100
+                                            ? 'bg-emerald-500'
+                                            : progress > 0
+                                                ? 'bg-blue-500'
+                                                : 'bg-muted-foreground'
+                                }
+                            />
+                            )}
+                        </section>
+                        )}
+
+                        <section className="space-y-4 rounded-lg border bg-background p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <h2 className="font-medium">Reading history</h2>
+                                {!isAdminView && readingHistory.length > 0 && (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={handleClearReadingHistory}
+                                        disabled={isClearingHistory || deletingHistoryId !== null}
+                                    >
+                                        <Trash2 />
+                                        {isClearingHistory ? 'Clearing...' : 'Clear all'}
+                                    </Button>
+                                )}
+                            </div>
+
+                            {isLoadingHistory ? (
+                                <p className="py-4 text-center text-sm text-muted-foreground">
+                                    Loading reading history...
+                                </p>
+                            ) : historyEntries.length === 0 ? (
+                                <p className="rounded-lg bg-muted/40 p-4 text-center text-sm text-muted-foreground">
+                                    No reading history recorded yet.
+                                </p>
+                            ) : (
+                                <ol className="max-h-80 space-y-3 overflow-y-auto pr-2">
+                                    {historyEntries.map((entry) => (
+                                        <li key={entry.id} className="rounded-lg border p-3">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <time
+                                                    dateTime={entry.read_on}
+                                                    className="font-medium"
+                                                >
+                                                    {new Date(`${entry.read_on}T00:00:00`).toLocaleDateString()}
+                                                </time>
+
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    {entry.isStartEntry && (
+                                                        <Badge variant="secondary">
+                                                            Started reading
+                                                        </Badge>
+                                                    )}
+
+                                                    {!entry.isStartEntry && entry.pages_read >= 0 && (
+                                                        <Badge variant="secondary">
+                                                            Page {entry.pages_read}
+                                                        </Badge>
+                                                    )}
+
+                                                    {!entry.isStartEntry && entry.chapters_read >= 0 && (
+                                                        <Badge variant="secondary">
+                                                            Chapters {entry.chapters_read}
+                                                        </Badge>
+                                                    )}
+
+                                                    {!entry.isStartEntry && entry.chapter && (
+                                                        <Badge variant="secondary">
+                                                            {entry.chapter}
+                                                        </Badge>
+                                                    )}
+
+                                                    {!entry.isStartEntry && entry.volume >= 0 && (
+                                                        <Badge variant="secondary">
+                                                            Volume {entry.volume}
+                                                        </Badge>
+                                                    )}
+
+                                                    {!isAdminView && !entry.isStartEntry && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            aria-label="Delete reading history entry"
+                                                            onClick={() => handleDeleteHistoryEntry(entry.id)}
+                                                            disabled={deletingHistoryId === entry.id || isClearingHistory}
+                                                        >
+                                                            <Trash2 />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {!entry.isStartEntry && entry.note && (
+                                                <p className="mt-2 text-sm text-muted-foreground">
+                                                    {entry.note}
+                                                </p>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
+                        </section>
+
+                        <section className="space-y-2">
+                            <h2 className="font-medium">Notes</h2>
+                            <p className="whitespace-pre-wrap rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+                                {book.notes || 'No notes added yet.'}
+                            </p>
+                        </section>
+
+                        {book.visibility === 'restricted' && book.share_token && (
+                            <section className="space-y-2 rounded-lg border bg-background p-4">
+                                <h2 className="font-medium">Restricted share link</h2>
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    <Input value={shareUrl} readOnly aria-label="Restricted book share link" />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={async () => {
+                                            await navigator.clipboard.writeText(shareUrl);
+                                            window.alert('Share link copied.');
+                                        }}
+                                    >
+                                        Copy link
+                                    </Button>
+                                </div>
+                            </section>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <section className="mt-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                        <MessageSquare className="size-5 text-primary" />
+                        <h2 className="text-xl font-semibold">Reviews</h2>
+                    </div>
+
+                    {isAuthenticated && !isAdminView && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base">
+                                    Write a review
+                                </CardTitle>
+                            </CardHeader>
+
+                            <CardContent>
+                                {reviewError && (
+                                    <div
+                                        className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                                        role="alert"
+                                    >
+                                        {reviewError}
+                                    </div>
+                                )}
+
+                                <form className="space-y-4" onSubmit={handleReviewSubmit}>
+                                    <StarRating
+                                        value={reviewForm.rating}
+                                        onChange={(rating) =>
+                                            setReviewForm((previous) => ({
+                                                ...previous,
+                                                rating,
+                                            }))
+                                        }
+                                    />
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="review-comment">Comment</Label>
+                                        <Textarea
+                                            id="review-comment"
+                                            name="comment"
+                                            value={reviewForm.comment}
+                                            onChange={handleReviewChange}
+                                            placeholder="Share your thoughts about this book"
+                                        />
+                                    </div>
+
+                                    <Button type="submit" disabled={isSubmittingReview}>
+                                        <Send />
+                                        {isSubmittingReview ? 'Submitting...' : 'Submit review'}
+                                    </Button>
+                                </form>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {isLoadingReviews ? (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                            Loading reviews...
+                        </p>
+                    ) : reviews.length === 0 ? (
+                        <Card>
+                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                                No reviews yet.
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-3">
+                            {reviews.map((review) => (
+                                <Card key={review.id}>
+                                    <CardHeader>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <CardTitle className="text-base">
+                                                {review.reviewer?.username || 'Anonymous'}
+                                            </CardTitle>
+
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="secondary">
+                                                    {'⭐'.repeat(review.rating)}
+                                                </Badge>
+
+                                                {!isAdminView && currentUser?.username === review.reviewer?.username && (
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => handleDeleteReview(review.id)}
+                                                        disabled={deletingReviewId === review.id}
+                                                    >
+                                                        <Trash2 />
+                                                        {deletingReviewId === review.id
+                                                            ? 'Deleting...'
+                                                            : 'Delete'}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+
+                                    <CardContent>
+                                        <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                                            {review.comment || 'No comment provided.'}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            </main>
+        </div>
+    );
+};
+
+export default BookDetailPage;

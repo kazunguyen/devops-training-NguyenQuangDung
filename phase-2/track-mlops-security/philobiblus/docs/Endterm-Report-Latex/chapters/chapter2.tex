@@ -1,0 +1,44 @@
+\reportchapter{II. YÊU CẦU BÀI TOÁN}
+\reportsection{a. Bối cảnh và mô tả bài toán}
+Hoạt động đọc thường tạo ra nhiều loại dữ liệu như thư viện cá nhân, tiến độ, nhận xét và lịch sử tương tác. Khi các dữ liệu này được ghi chép hoặc lưu trữ ở nhiều công cụ riêng lẻ, người dùng khó theo dõi quá trình đọc và kiểm soát nội dung đã chia sẻ. Vì vậy, Philobiblus được xây dựng như một hệ thống mẫu tập trung các thao tác quản lý thư viện, cập nhật tiến độ, nhận xét, chia sẻ và gợi ý sách.
+
+Nếu mở rộng cho nhiều người dùng, hệ thống không chỉ cần đáp ứng các chức năng nghiệp vụ mà còn phải xử lý đồng thời nhiều request, phân tách dữ liệu theo tài khoản và kiểm soát phạm vi truy cập. Các thành phần frontend, backend, cơ sở dữ liệu và recommendation service được tách riêng để giới hạn ảnh hưởng khi có lỗi, triển khai độc lập và mở rộng theo tải. Đây là cơ sở để bài toán được triển khai trên Kubernetes với các yêu cầu về bảo mật, khả năng phục hồi, autoscale và theo dõi vận hành.
+
+\reportsection{b. Mục tiêu của hệ thống}
+Mục tiêu nghiệp vụ của Philobiblus là hoàn thiện các chức năng cơ bản để quản lý thư viện, tiến độ đọc, nhận xét, chia sẻ và gợi ý sách; dữ liệu phải được gắn với đúng tài khoản và phạm vi truy cập.
+
+Mục tiêu kỹ thuật là triển khai hệ thống nhiều thành phần trên GKE Autopilot bằng Terraform và Helm; xây dựng CI/CD để kiểm thử, quét bảo mật, build và phát hành image; quản lý snapshot, run, artifact và model version bằng DVC và MLflow. Phần vận hành cần kiểm chứng khả năng cô lập và khôi phục dịch vụ, autoscale theo tải và quan sát workload qua metric, log và trạng thái rollout.
+
+\reportsection{c. Yêu cầu của hệ thống}
+\reportsubsection{Yêu cầu chức năng}
+\textbf{Quản lý tài khoản và quyền truy cập.} Người dùng có thể đăng ký, đăng nhập, cập nhật hồ sơ và đăng xuất; backend phải xác thực token, kiểm tra chủ sở hữu tài nguyên và áp dụng quyền quản trị ở phía máy chủ.
+
+\textbf{Quản lý thư viện và tiến độ đọc.} Người dùng có thể tạo, tìm kiếm, chỉnh sửa và xóa sách thuộc quyền sở hữu; mỗi sách phải lưu được trạng thái dự định đọc, đang đọc hoặc đã hoàn thành, cùng tiến độ và lịch sử thay đổi.
+
+\textbf{Tương tác và chia sẻ.} Người dùng có thể viết nhận xét, chấm điểm, theo dõi tài khoản khác và chia sẻ sách theo các mức public, private hoặc restricted; dữ liệu không được hiển thị vượt quá visibility đã chọn.
+
+\textbf{Gợi ý nội dung.} Hệ thống phải trả về danh sách sách liên quan từ catalog hợp lệ, loại bỏ sách nguồn và các bản ghi không đủ metadata, đồng thời vẫn phục vụ được thư viện khi dịch vụ gợi ý tạm thời không sẵn sàng.
+
+\textbf{Quản trị vòng đời model.} Hệ thống phải tạo snapshot dữ liệu, ghi nhận run và metric, kiểm tra chất lượng candidate rồi chỉ phát hành model đạt điều kiện; model đang phục vụ phải truy nguyên được về snapshot, mã nguồn và artifact tương ứng.
+
+\reportsubsection{Yêu cầu phi chức năng}
+\textbf{Bảo mật và phân quyền.} Mật khẩu phải được băm, API phải kiểm tra JWT và quyền sở hữu, secret không đặt trong mã nguồn; các lớp Gateway, Cloud Armor, NetworkPolicy và securityContext phải hạn chế truy cập từ ngoài vào trong cluster.
+
+\textbf{Khả năng triển khai lặp lại.} Hạ tầng GKE, Cloud SQL, mạng và quyền truy cập phải được mô tả bằng Terraform để có thể kiểm tra thay đổi, tái tạo môi trường và tránh cấu hình thủ công không truy vết được. Đây là lý do dự án áp dụng Infrastructure as Code.
+
+\textbf{Khả năng mở rộng và tự phục hồi.} Các thành phần chạy dạng container phải được đóng gói thành Deployment hoặc Job trên Kubernetes, có readiness/liveness probe, giới hạn tài nguyên và cơ chế rollout; nhờ đó workload có thể tự khởi động lại và mở rộng theo nhu cầu.
+
+\textbf{Tính lặp lại của phát hành.} Mỗi thay đổi phải đi qua CI/CD gồm kiểm thử, kiểm tra dependency, quét bảo mật, build image và triển khai bằng Helm với image digest xác định; việc phát hành không phụ thuộc vào thao tác thủ công trên cluster.
+
+\textbf{Quản lý vòng đời dữ liệu và model.} Snapshot, pipeline, metric, artifact và model version phải được lưu vết bằng DVC và MLflow, cho phép tái hiện một lần huấn luyện và rollback khi candidate không đạt quality gate. Đây là yêu cầu cốt lõi dẫn đến việc áp dụng MLOps.
+
+\textbf{Quan sát và xử lý sự cố.} Hệ thống phải xuất metric, log và trạng thái rollout để Cloud Monitoring, Cloud Logging và Managed Service for Prometheus có thể phát hiện lỗi, theo dõi tải và hỗ trợ đối chiếu nguyên nhân.
+
+\textbf{Khả năng kiểm thử và bảo trì.} Backend, recommendation service, Helm chart và Terraform module phải được kiểm thử độc lập; cấu trúc module, schema và hợp đồng API cần đủ rõ để thay đổi một thành phần không làm hỏng các thành phần còn lại.
+
+\reportsection{d. Phạm vi bài toán và trách nhiệm pháp lý liên quan}
+Philobiblus là dự án độc lập do em thực hiện từ phân tích yêu cầu, phát triển giao diện, API và cơ sở dữ liệu đến MLOps, kiểm thử, đóng gói và triển khai. Sản phẩm được đánh giá qua các luồng quản lý thư viện, tiến độ, nhận xét, chia sẻ, gợi ý và khả năng duy trì ranh giới quyền hạn.
+
+Dự án không xử lý thanh toán, giao nhận hoặc phân phối nội dung số. Hệ thống chỉ lưu trữ và hiển thị các bản ghi mô tả sách do người dùng cung cấp hoặc lấy từ nguồn phù hợp, gồm tên sách, tác giả, thể loại, thẻ, số trang và thông tin hoặc đường dẫn ảnh bìa. Hệ thống không lưu trữ, sao chép hoặc cung cấp toàn văn, ebook, audiobook hay bản scan của sách. Việc sử dụng ảnh bìa trong môi trường thực tế phải tuân theo quyền và điều khoản của nguồn cung cấp; báo cáo này chỉ mô tả phạm vi kỹ thuật của hệ thống.
+
+Hệ thống gợi ý sách sử dụng thông tin mô tả của từng cuốn sách trong cơ sở dữ liệu, chẳng hạn như tên sách, tác giả, thể loại và thẻ. Dữ liệu này được lưu thành snapshot để huấn luyện và đánh giá mô hình. Sau đó, mô hình xác định mức độ tương đồng giữa các cuốn sách và đề xuất những cuốn gần với sách người dùng đang xem hoặc đã chọn, trong phạm vi danh sách sách hiện có. Hệ thống gợi ý sách chỉ phục vụ mục đích kiểm chứng pipeline MLOps, chưa hướng tới xây dựng dịch vụ thương mại hoặc mô hình cá nhân hóa ở quy mô lớn.

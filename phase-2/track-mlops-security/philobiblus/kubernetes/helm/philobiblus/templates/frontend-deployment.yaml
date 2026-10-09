@@ -1,0 +1,55 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "philobiblus.fullname" . }}-frontend
+  labels:
+    {{- include "philobiblus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "philobiblus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "philobiblus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ required "frontend.service.port is required" .Values.frontend.service.port }}
+          env:
+            - name: VITE_API_URL
+              value: {{ required "frontend.apiUrl is required" .Values.frontend.apiUrl | quote }}
+            - name: VITE_DEV_HOST
+              value: {{ required "frontend.devHost is required" .Values.frontend.devHost | quote }}
+            - name: VITE_DEV_PORT
+              value: {{ required "frontend.devPort is required" .Values.frontend.devPort | quote }}
+            - name: VITE_GRAFANA_URL
+              value: {{ .Values.frontend.grafanaUrl | quote }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.frontend.probe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.frontend.probe.periodSeconds }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ add .Values.frontend.probe.initialDelaySeconds 10 }}
+            periodSeconds: {{ .Values.frontend.probe.periodSeconds }}
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+{{- end }}

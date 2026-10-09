@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: philobiblus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: philobiblus-frontend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5173
+          env:
+            - name: VITE_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: VITE_API_URL
+            - name: VITE_DEV_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: VITE_DEV_HOST
+            - name: VITE_DEV_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: VITE_DEV_PORT
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5173
+            initialDelaySeconds: 10
+            periodSeconds: 5
